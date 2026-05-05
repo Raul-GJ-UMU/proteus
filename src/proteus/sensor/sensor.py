@@ -4,6 +4,7 @@ import socket
 from dotenv import load_dotenv
 from paramiko.common import OPEN_SUCCEEDED, OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED, AUTH_SUCCESSFUL
 from loguru import logger
+import threading
 
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
@@ -36,17 +37,78 @@ class Sensor(paramiko.ServerInterface):
   
   def get_allowed_auths(self, username):
     return "password"
+  
+  def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
+    return True
+  
+  def check_channel_shell_request(self, channel):
+    return True
+
+def handle_session(channel, addr):
+  logger.success("SSH session established")
+
+  channel.send(b"Welcome to Proteus OS 1.0\r\n")
+  prompt = b"root@proteus:~# "
+  channel.send(prompt)
+  
+  command_buffer = ""
+
+  while True:
+    try:
+      char = channel.recv(1).decode("utf-8", errors="ignore")
+      if not char:
+        logger.warning("Client disconnected")
+        break
+
+      channel.send(char.encode("utf-8"))
+
+      if char in ("\r", "\n"):
+        # handle command execution
+        channel.send(b"\r\n")
+        full_command = command_buffer.strip()
+
+        if full_command:
+          if full_command.lower() in ("exit", "quit"):
+            channel.send(b"Logout!\r\n")
+            break
+
+          logger.info(f"Command captured: {full_command}")
+
+          mocked_response = f"bash: {full_command}: command not found\r\n"
+          channel.send(mocked_response.encode("utf-8"))
+        
+        command_buffer = ""
+        channel.send(prompt)
+      
+      elif char in ("\b", "\x7f"):
+        # Handle backspace
+        if len(command_buffer) > 0:
+          command_buffer = command_buffer[:-1]
+          channel.send(b"\b \b")
+      else:
+        command_buffer += char
+    except Exception as e:
+      logger.error(f"Session error: {e}")
+      break
+  channel.close()
+
 
 def start_sensor(host="0.0.0.0", port=2222):
+  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+  sock.settimeout(1.0)
+  
   try:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((host, port))
     sock.listen(100)
-    logger.info(f"Sensor SSH listening on {host}:{port}")
+    logger.success(f"Sensor SSH listening on {host}:{port}")
 
     while True:
-      client, addr = sock.accept()
+      try:
+        client, addr = sock.accept()
+      except socket.timeout:
+        continue
+      
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
       
       transport = paramiko.Transport(client)
@@ -65,14 +127,17 @@ def start_sensor(host="0.0.0.0", port=2222):
         logger.error("The client did not open a channel")
         continue
       
-      logger.info("SSH session established")
+      client_thread = threading.Thread(target=handle_session, args=(channel, addr))
+      client_thread.daemon = True
+      client_thread.start()
 
-      channel.send(b"Welcome to Proteus OS 1.0\r\n")
-      channel.send(b"Connection closed by remote host.\r\n")
-      channel.close()
-
+  except KeyboardInterrupt:
+    logger.warning("Sensor shutting down")
   except Exception as e:
-    logger.error(f"Sensor error: {e}")
+    logger.critical(f"Sensor error: {e}")
+  finally:
+    sock.close()
+    os._exit(0)
 
 if __name__ == "__main__":
   start_sensor()
