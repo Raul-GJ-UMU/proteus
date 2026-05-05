@@ -108,7 +108,7 @@ def start_sensor(host="0.0.0.0", port=2222):
         client, addr = sock.accept()
       except socket.timeout:
         continue
-      
+
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
       
       transport = paramiko.Transport(client)
@@ -132,12 +132,8 @@ def start_sensor(host="0.0.0.0", port=2222):
       client_thread.start()
 
   except KeyboardInterrupt:
-    logger.warning("Sensor shutting down")
+    raise
   except Exception as e:
     logger.critical(f"Sensor error: {e}")
   finally:
     sock.close()
-    os._exit(0)
-
-if __name__ == "__main__":
-  start_sensor()
