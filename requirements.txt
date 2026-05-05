@@ -1,0 +1,6 @@
+python-dotenv==1.0.1
+paramiko==3.4.0
+cryptography==42.0.5
+loguru==0.7.3
+pytest==7.3.1
+pytest-mock==3.10.0
