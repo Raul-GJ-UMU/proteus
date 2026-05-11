@@ -4,3 +4,4 @@ cryptography==42.0.5
 loguru==0.7.3
 pytest==7.3.1
 pytest-mock==3.10.0
+pydantic==2.13.4

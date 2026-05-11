@@ -1,0 +1,38 @@
+from typing import Optional
+
+from pydantic import BaseModel, Field, ValidationError
+from datetime import datetime
+
+class NetworkInfo(BaseModel):
+    source_ip: str = Field(..., description="The source IP address")
+    source_port: int = Field(..., description="The source port number")
+    ssh_client: str = Field(..., description="The SSH client used by the client")
+
+class EnvironmentInfo(BaseModel):
+    terminal_type: str = Field(..., description="The type of terminal used by the client")
+    shell_width: int = Field(..., description="The width of the client's terminal")
+    shell_height: int = Field(..., description="The height of the client's terminal")
+
+class AuthenticationInfo(BaseModel):
+    username: str = Field(..., description="The username used for authentication")
+    password: str = Field(..., description="The password used for authentication")
+    timestamp: datetime = Field(..., description="The timestamp of the authentication attempt")
+
+class InteractionInfo(BaseModel):
+    command: str = Field(..., description="The command executed by the client")
+    timestamp: datetime = Field(..., description="The timestamp of the command execution")
+    backspaces: int = Field(..., description="The number of backspaces used in the command")
+
+class SessionInfo(BaseModel):
+    start_time: datetime = Field(..., description="The start time of the session")
+    end_time: Optional[datetime] = Field(..., description="The end time of the session")
+    total_commands: int = Field(..., description="The total number of commands executed during the session")
+    exit_reason: Optional[str] = Field(..., description="The reason for session termination (e.g., client disconnect, logout command, etc.)")
+
+class Session(BaseModel):
+    session_id: str = Field(..., description="The ID of the session")
+    network: NetworkInfo = Field(..., description="The network information of the session")
+    environment: EnvironmentInfo = Field(..., description="The environment information of the session")
+    authentication: AuthenticationInfo = Field(..., description="The authentication information of the session")
+    interactions: list[InteractionInfo] = Field(..., description="The list of interactions during the session")
+    session_metadata: SessionInfo = Field(..., description="The metadata of the session")

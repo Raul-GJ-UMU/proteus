@@ -6,6 +6,8 @@ from paramiko.common import OPEN_SUCCEEDED, OPEN_FAILED_ADMINISTRATIVELY_PROHIBI
 from loguru import logger
 import threading
 
+from src.proteus.telemetry.tracker import SessionTracker
+
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
 load_dotenv()
@@ -26,12 +28,17 @@ def get_or_generate_rsa_key(path):
 HOST_KEY = get_or_generate_rsa_key(RSA_KEY_PATH)
 
 class Sensor(paramiko.ServerInterface):
+  def __init__(self, tracker):
+    self.tracker = tracker
+    super().__init__()
+  
   def check_channel_request(self, kind, chanid):
     if kind == "session":
       return OPEN_SUCCEEDED
     return OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
   
   def check_auth_password(self, username, password):
+    self.tracker.add_authentication(username, password)
     logger.info(f"Login attempt captured - User: {username} | Password: {password}")
     return AUTH_SUCCESSFUL
   
@@ -39,12 +46,14 @@ class Sensor(paramiko.ServerInterface):
     return "password"
   
   def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
+    term_str = term.decode("utf-8") if isinstance(term, bytes) else str(term)
+    self.tracker.add_environment(term_str, width, height)
     return True
   
   def check_channel_shell_request(self, channel):
     return True
 
-def handle_session(channel, addr):
+def handle_session(channel, addr, tracker: SessionTracker):
   logger.success("SSH session established")
 
   channel.send(b"Welcome to Proteus OS 1.0\r\n")
@@ -52,6 +61,7 @@ def handle_session(channel, addr):
   channel.send(prompt)
   
   command_buffer = ""
+  backspace_count = 0
 
   while True:
     try:
@@ -68,11 +78,15 @@ def handle_session(channel, addr):
         full_command = command_buffer.strip()
 
         if full_command:
-          if full_command.lower() in ("exit", "quit"):
+          if full_command.lower() in ("exit", "logout"):
             channel.send(b"Logout!\r\n")
+            tracker.finalize_and_export("User requested logout")
             break
-
+          
           logger.info(f"Command captured: {full_command}")
+
+          tracker.add_interaction(full_command, backspace_count)
+          backspace_count = 0
 
           mocked_response = f"bash: {full_command}: command not found\r\n"
           channel.send(mocked_response.encode("utf-8"))
@@ -85,6 +99,7 @@ def handle_session(channel, addr):
         if len(command_buffer) > 0:
           command_buffer = command_buffer[:-1]
           channel.send(b"\b \b")
+          backspace_count += 1
       else:
         command_buffer += char
     except Exception as e:
@@ -113,21 +128,26 @@ def start_sensor(host="0.0.0.0", port=2222):
       
       transport = paramiko.Transport(client)
       transport.add_server_key(HOST_KEY)
+      tracker = SessionTracker(addr[0], addr[1], "Pending...")
 
-      server = Sensor()
+      server = Sensor(tracker)
 
       try:
         transport.start_server(server=server)
       except paramiko.SSHException:
         logger.error("Error negociating SSH session")
         continue
+      
+      client_version = transport.remote_version
+      logger.info(f"SSH client version: {client_version}")
+      tracker.add_ssh_client(client_version)
 
       channel = transport.accept(20)
       if channel is None:
         logger.error("The client did not open a channel")
         continue
       
-      client_thread = threading.Thread(target=handle_session, args=(channel, addr))
+      client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker))
       client_thread.daemon = True
       client_thread.start()
 
