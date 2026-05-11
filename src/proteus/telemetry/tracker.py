@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from .session import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
+from .models import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import uuid
 from loguru import logger
 
@@ -67,5 +67,6 @@ class SessionTracker:
       session_metadata=session_meta
     )
     logger.info(f"Finalizing session: {self.session_id}")
-    print(session_data.model_dump_json(indent=2))
-    # return session_data.model_dump_json(indent=2)
+    session_json = session_data.model_dump_json(indent=2)
+    # print(session_json)
+    return session_json
