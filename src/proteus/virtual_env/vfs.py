@@ -1,6 +1,8 @@
+from importlib.resources import path
 import os
 import json
 from loguru import logger
+import posixpath
 
 logger.add("logs/proteus_vfs.log", rotation="10 MB")
 
@@ -86,31 +88,66 @@ class VirtualFileSystem:
       self.cwd_path = "/"
   
   def list_directory(self, path):
-    node = self.resolve_path(path)
+    abs_path_str = self.resolve_path(path, self.cwd_path)
+    node = self.get_node(abs_path_str)
     if node and isinstance(node, FSDirectory):
       return "  ".join(node.children.keys())
-    return ""
-  
-  def resolve_path(self, path):
-    if path.startswith("/"):
-      node = self.root
-      parts = path.strip("/").split("/")
+    elif node:
+      return node.name + "\r\n"
     else:
-      node = self.current_directory
-      parts = path.split("/")
+      return f"ls: cannot access {path}: No such file or directory\r\n"
+  
+  def resolve_path(self, path, cwd):
+    return posixpath.normpath(posixpath.join(cwd, path))
 
+  def get_node(self, path):
+    if path == "/":
+      return self.root
+    
+    parts = path.strip("/").split("/")
+    node = self.root
     for part in parts:
-      if part == "" or part == ".":
-        continue
-      elif part == "..":
-        if node.name != "/":
-          parent_path = "/".join(self.cwd_path.strip("/").split("/")[:-1])
-          new_node = self.resolve_path("/" + parent_path) if parent_path else self.root
-          if isinstance(new_node, FSDirectory):
-            node = new_node
+      if part in node.children:
+        node = node.children[part]
       else:
-        if isinstance(node, FSDirectory) and part in node.children:
-          node = node.children[part]
-        else:
-          return None
+        return None
     return node
+  
+  # POSIX
+
+  def exists(self, path):
+    return self.get_node(path) is not None
+
+  def isdir(self, path):
+    node = self.get_node(path)
+    return node is not None and hasattr(node, 'children')
+
+  def isfile(self, path):
+    node = self.get_node(path)
+    return node is not None and not hasattr(node, 'children')
+  
+  def mkdir(self, path, uid, gid, size, mode):
+    import posixpath
+    parent_dir_path = posixpath.dirname(path)
+    new_dir_name = posixpath.basename(path)
+    
+    parent_node = self.get_node(parent_dir_path)
+    
+    if parent_node and hasattr(parent_node, 'children'):
+      new_node = FSDirectory(new_dir_name, uid=uid, gid=gid, size=size)
+      parent_node.add_child(new_node)
+      return True
+    return False
+  
+  def mkfile(self, path, uid, gid, size, mode, realfile=None):
+    import posixpath
+    parent_dir_path = posixpath.dirname(path)
+    new_file_name = posixpath.basename(path)
+    
+    parent_node = self.get_node(parent_dir_path)
+    
+    if parent_node and hasattr(parent_node, 'children'):
+      new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size)
+      parent_node.add_child(new_node)
+      return True
+    return False

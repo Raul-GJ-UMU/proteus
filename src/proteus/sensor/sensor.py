@@ -9,7 +9,7 @@ import threading
 from src.proteus.telemetry.tracker import SessionTracker
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
-from src.proteus.emulated_shell.virtual_shell import VirtualShell
+from src.proteus.virtual_env.virtual_shell import VirtualShell
 
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
