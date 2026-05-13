@@ -8,6 +8,9 @@ import threading
 
 from src.proteus.telemetry.tracker import SessionTracker
 
+from src.proteus.virtual_env.vfs import VirtualFileSystem
+from src.proteus.emulated_shell.virtual_shell import VirtualShell
+
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
 load_dotenv()
@@ -53,11 +56,11 @@ class Sensor(paramiko.ServerInterface):
   def check_channel_shell_request(self, channel):
     return True
 
-def handle_session(channel, addr, tracker: SessionTracker):
+def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
   logger.success("SSH session established")
 
   channel.send(b"Welcome to Proteus OS 1.0\r\n")
-  prompt = b"root@proteus:~# "
+  prompt = shell.get_prompt().encode("utf-8")
   channel.send(prompt)
   
   command_buffer = ""
@@ -79,7 +82,7 @@ def handle_session(channel, addr, tracker: SessionTracker):
 
         if full_command:
           if full_command.lower() in ("exit", "logout"):
-            channel.send(b"Logout!\r\n")
+            channel.send(b"logout\r\n")
             tracker.finalize_and_export("User requested logout")
             break
           
@@ -88,10 +91,11 @@ def handle_session(channel, addr, tracker: SessionTracker):
           tracker.add_interaction(full_command, backspace_count)
           backspace_count = 0
 
-          mocked_response = f"bash: {full_command}: command not found\r\n"
-          channel.send(mocked_response.encode("utf-8"))
+          response = shell.execute_command(full_command)
+          channel.send(response.encode("utf-8"))
         
         command_buffer = ""
+        prompt = shell.get_prompt().encode("utf-8")
         channel.send(prompt)
       
       elif char in ("\b", "\x7f"):
@@ -118,6 +122,7 @@ def start_sensor(host="0.0.0.0", port=2222):
     sock.listen(100)
     logger.success(f"Sensor SSH listening on {host}:{port}")
 
+    global_vfs = VirtualFileSystem()
     while True:
       try:
         client, addr = sock.accept()
@@ -147,7 +152,8 @@ def start_sensor(host="0.0.0.0", port=2222):
         logger.error("The client did not open a channel")
         continue
       
-      client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker))
+      shell = VirtualShell(global_vfs)
+      client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker, shell))
       client_thread.daemon = True
       client_thread.start()
 

@@ -5,6 +5,7 @@ from src.proteus.sensor.sensor import Sensor, handle_session
 from src.proteus.telemetry.tracker import SessionTracker
 
 tracker = SessionTracker("192.168.1.50", 12345, "OpenSSH_8.0")
+shell = MagicMock()
 
 class TestProteusSensor:
   def test_check_channel_request(self):
@@ -35,7 +36,7 @@ class TestProteusSensor:
         mock_channel.recv.side_effect = [b'e', b'x', b'i', b't', b'\n', b'']
         
         fake_ip = ("192.168.1.100", 55555)
-        handle_session(mock_channel, fake_ip, tracker)
+        handle_session(mock_channel, fake_ip, tracker, shell)
         
-        mock_channel.send.assert_any_call(b"Logout!\r\n")
+        mock_channel.send.assert_any_call(b"logout\r\n")
         mock_channel.close.assert_called_once()
