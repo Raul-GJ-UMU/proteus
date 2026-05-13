@@ -59,7 +59,8 @@ class Sensor(paramiko.ServerInterface):
 def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
   logger.success("SSH session established")
 
-  channel.send(b"Welcome to Proteus OS 1.0\r\n")
+  motd = shell.get_motd()
+  channel.send(motd.encode("utf-8"))
   prompt = shell.get_prompt().encode("utf-8")
   channel.send(prompt)
   
