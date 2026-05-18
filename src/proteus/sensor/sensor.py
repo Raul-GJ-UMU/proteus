@@ -28,8 +28,6 @@ def get_or_generate_rsa_key(path):
     key.write_private_key_file(path)
     return key
 
-HOST_KEY = get_or_generate_rsa_key(RSA_KEY_PATH)
-
 class Sensor(paramiko.ServerInterface):
   def __init__(self, tracker):
     self.tracker = tracker
@@ -113,6 +111,7 @@ def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
 
 
 def start_sensor(host="0.0.0.0", port=2222):
+  host_key = get_or_generate_rsa_key(RSA_KEY_PATH)
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
   sock.settimeout(1.0)
@@ -132,7 +131,7 @@ def start_sensor(host="0.0.0.0", port=2222):
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
       
       transport = paramiko.Transport(client)
-      transport.add_server_key(HOST_KEY)
+      transport.add_server_key(host_key)
       tracker = SessionTracker(addr[0], addr[1], "Pending...")
 
       server = Sensor(tracker)
