@@ -22,7 +22,7 @@ def main():
     logger.critical(f"An error occurred: {e}")
   finally:
     logger.info("Proteus has been stopped.")
-    os._exit(0)
+    return
 
 if __name__ == "__main__":
   main()

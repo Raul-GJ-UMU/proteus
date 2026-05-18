@@ -81,16 +81,15 @@ def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
         channel.send(b"\r\n")
         full_command = command_buffer.strip()
 
+        tracker.add_interaction(full_command, backspace_count)
+        backspace_count = 0
+        logger.info(f"Command captured: {full_command}")
+
         if full_command:
           if full_command.lower() in ("exit", "logout"):
             channel.send(b"logout\r\n")
             tracker.finalize_and_export("User requested logout")
             break
-          
-          logger.info(f"Command captured: {full_command}")
-
-          tracker.add_interaction(full_command, backspace_count)
-          backspace_count = 0
 
           response = shell.execute_command(full_command)
           channel.send(response.encode("utf-8"))

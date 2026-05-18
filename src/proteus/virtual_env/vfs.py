@@ -7,24 +7,23 @@ import posixpath
 logger.add("logs/proteus_vfs.log", rotation="10 MB")
 
 class FSNode:
-  def __init__(self, name, uid=0, gid=0, size=4096, permissions="rwxr-xr-x"):
+  def __init__(self, name: str, uid=0, gid=0, size=4096, permissions="rwxr-xr-x"):
     self.name = name
     self.uid = uid
     self.gid = gid
     self.size = size
     self.permissions = permissions
-    self.children = {}
   
 class FSDirectory(FSNode):
-  def __init__(self, name, **kwargs):
+  def __init__(self, name: str, **kwargs):
     super().__init__(name, **kwargs)
-    self.children = {}
+    self.children: dict[str, FSNode] = {}
 
-  def add_child(self, child):
+  def add_child(self, child: FSNode):
     self.children[child.name] = child
   
 class FSFile(FSNode):
-  def __init__(self, name, real_honeyfs_path=None, **kwargs):
+  def __init__(self, name: str, real_honeyfs_path=None, **kwargs):
     super().__init__(name, **kwargs)
     self.real_honeyfs_path = real_honeyfs_path
   
@@ -42,7 +41,7 @@ class VirtualFileSystem:
 
     self.load_from_json(json_path)
   
-  def load_from_json(self, json_path):
+  def load_from_json(self, json_path: str):
     if not os.path.exists(json_path):
       logger.error(f"Filesystem JSON file not found: {json_path}")
       return
@@ -55,7 +54,7 @@ class VirtualFileSystem:
     self._set_initial_directory("/root")
     logger.success("Filesystem loaded successfully.")
 
-  def _parse_node(self, node_data):
+  def _parse_node(self, node_data: dict):
     if node_data["type"] == "directory":
       node = FSDirectory(
         name=node_data["name"],
@@ -78,16 +77,20 @@ class VirtualFileSystem:
       )
     return node
   
-  def _set_initial_directory(self, target_path):
+  def _set_initial_directory(self, target_path: str):
     if target_path == "/root" and "root" in self.root.children:
-      self.current_directory = self.root.children["root"]
-      self.cwd_path = "/root"
+      root_dir = self.root.children["root"]
+      if isinstance(root_dir, FSDirectory):
+        self.current_directory = root_dir
+        self.cwd_path = "/root"
+      else:
+        logger.error("Expected 'root' to be a directory in the filesystem JSON.")
     else:
       logger.warning(f"Initial directory {target_path} not found. Starting at root.")
       self.current_directory = self.root
       self.cwd_path = "/"
   
-  def list_directory(self, path):
+  def list_directory(self, path: str):
     abs_path_str = self.resolve_path(path, self.cwd_path)
     node = self.get_node(abs_path_str)
     if node and isinstance(node, FSDirectory):
@@ -97,17 +100,18 @@ class VirtualFileSystem:
     else:
       return f"ls: cannot access {path}: No such file or directory\r\n"
   
-  def resolve_path(self, path, cwd):
+  def resolve_path(self, path: str, cwd: str):
     return posixpath.normpath(posixpath.join(cwd, path))
 
-  def get_node(self, path):
+  def get_node(self, path: str):
+    node: FSNode
     if path == "/":
       return self.root
     
     parts = path.strip("/").split("/")
     node = self.root
     for part in parts:
-      if part in node.children:
+      if isinstance(node, FSDirectory) and part in node.children:
         node = node.children[part]
       else:
         return None
@@ -115,38 +119,38 @@ class VirtualFileSystem:
   
   # POSIX
 
-  def exists(self, path):
+  def exists(self, path: str):
     return self.get_node(path) is not None
 
-  def isdir(self, path):
+  def isdir(self, path: str):
     node = self.get_node(path)
-    return node is not None and hasattr(node, 'children')
+    return node is not None and isinstance(node, FSDirectory)
 
-  def isfile(self, path):
+  def isfile(self, path: str):
     node = self.get_node(path)
-    return node is not None and not hasattr(node, 'children')
+    return node is not None and isinstance(node, FSFile)
   
-  def mkdir(self, path, uid, gid, size, mode):
+  def mkdir(self, path: str, uid: int, gid: int, size: int, mode: str):
     import posixpath
     parent_dir_path = posixpath.dirname(path)
     new_dir_name = posixpath.basename(path)
     
     parent_node = self.get_node(parent_dir_path)
     
-    if parent_node and hasattr(parent_node, 'children'):
+    if parent_node and isinstance(parent_node, FSDirectory):
       new_node = FSDirectory(new_dir_name, uid=uid, gid=gid, size=size)
       parent_node.add_child(new_node)
       return True
     return False
   
-  def mkfile(self, path, uid, gid, size, mode, realfile=None):
+  def mkfile(self, path: str, uid: int, gid: int, size: int, mode: str, realfile=None):
     import posixpath
     parent_dir_path = posixpath.dirname(path)
     new_file_name = posixpath.basename(path)
     
     parent_node = self.get_node(parent_dir_path)
     
-    if parent_node and hasattr(parent_node, 'children'):
+    if parent_node and isinstance(parent_node, FSDirectory):
       new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size)
       parent_node.add_child(new_node)
       return True

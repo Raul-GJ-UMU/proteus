@@ -7,7 +7,7 @@ from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
 
-from src.proteus.virtual_env.vfs import VirtualFileSystem
+from src.proteus.virtual_env.vfs import FSDirectory, VirtualFileSystem
 from src.proteus.virtual_env.cowrie.shell.command import MockProtocol
 
 sys.modules['treq'] = MagicMock()
@@ -76,15 +76,21 @@ class VirtualShell:
   
   def get_motd(self):
     return (
-      "Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-89-generic x86_64)\r\n\r\n"
+      "Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 5.15.0-179-generic x86_64)\r\n\r\n"
       " * Documentation:  https://help.ubuntu.com\r\n"
       " * Management:     https://landscape.canonical.com\r\n"
-      " * Support:        https://ubuntu.com/advantage\r\n\r\n"
+      " * Support:        https://ubuntu.com/pro\r\n\r\n"
       "  System information as of " + datetime.now().strftime("%a %b %d %H:%M:%S UTC %Y") + "\r\n\r\n"
-      "  System load:  0.0               Processes:             102\r\n"
-      "  Usage of /:   12.4% of 19.56GB   Users logged in:       0\r\n"
-      "  Memory usage: 15%               IP address for eth0:   172.17.0.2\r\n\r\n"
+      "  System load:  0.0                Processes:               113\r\n"
+      "  Usage of /:   36.4% of 19.56GB   Users logged in:         0\r\n"
+      "  Memory usage: 15%                IPv4 address for enp0s3: 10.0.2.15\r\n"
+      "  Swamp usage:  0%\r\n\r\n"
+      "Expanded security Maintenance for Applications is not enabled.\r\n\r\n"
       "0 updates can be applied immediately.\r\n\r\n"
+      "Enable ESM Apps to receive additional future security updates.\r\n"
+      "See https://ubuntu.com/esm or run: sudo pro status\r\n\r\n"
+      "New release '24.04.4 LTS' available.\r\n"
+      "Run 'do-release-upgrade' to upgrade to it.\r\n\r\n\r\n"
       "Last login: " + (datetime.now() - timedelta(days=1)).strftime("%a %b %d %H:%M:%S %Y") + " from 192.168.1.15\r\n"
     )
   
@@ -150,22 +156,24 @@ class VirtualShell:
     new_path = posixpath.normpath(posixpath.join(self.vfs.cwd_path, target_path))
     
     node = self.resolve_absolute_path(new_path)
-    
-    if node and hasattr(node, "children"):
-        self.vfs.current_directory = node
-        self.vfs.cwd_path = new_path
-        return ""
+
+    if node is None:
+      return f"-bash: cd: {target_path}: No such file or directory\r\n"
+    if isinstance(node, FSDirectory):
+      self.vfs.current_directory = node
+      self.vfs.cwd_path = new_path
+      return ""
     else:
-        return f"cd: {target_path}: No such file or directory\r\n"
+      return f"-bash: cd: {target_path}: Not a directory\r\n"
   
-  def resolve_absolute_path(self, target_path):
+  def resolve_absolute_path(self, target_path: str):
     if target_path == "/":
       return self.vfs.root
     
     parts = target_path.strip("/").split("/")
     node = self.vfs.root
     for part in parts:
-      if part in node.children:
+      if isinstance(node, FSDirectory) and part in node.children:
         node = node.children[part]
       else:
         return None
