@@ -8,6 +8,9 @@ import threading
 
 from src.proteus.telemetry.tracker import SessionTracker
 
+from src.proteus.virtual_env.vfs import VirtualFileSystem
+from src.proteus.virtual_env.virtual_shell import VirtualShell
+
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
 load_dotenv()
@@ -24,8 +27,6 @@ def get_or_generate_rsa_key(path):
     key = paramiko.RSAKey.generate(2048)
     key.write_private_key_file(path)
     return key
-
-HOST_KEY = get_or_generate_rsa_key(RSA_KEY_PATH)
 
 class Sensor(paramiko.ServerInterface):
   def __init__(self, tracker):
@@ -53,11 +54,12 @@ class Sensor(paramiko.ServerInterface):
   def check_channel_shell_request(self, channel):
     return True
 
-def handle_session(channel, addr, tracker: SessionTracker):
+def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
   logger.success("SSH session established")
 
-  channel.send(b"Welcome to Proteus OS 1.0\r\n")
-  prompt = b"root@proteus:~# "
+  motd = shell.get_motd()
+  channel.send(motd.encode("utf-8"))
+  prompt = shell.get_prompt().encode("utf-8")
   channel.send(prompt)
   
   command_buffer = ""
@@ -77,21 +79,21 @@ def handle_session(channel, addr, tracker: SessionTracker):
         channel.send(b"\r\n")
         full_command = command_buffer.strip()
 
+        tracker.add_interaction(full_command, backspace_count)
+        backspace_count = 0
+        logger.info(f"Command captured: {full_command}")
+
         if full_command:
           if full_command.lower() in ("exit", "logout"):
-            channel.send(b"Logout!\r\n")
+            channel.send(b"logout\r\n")
             tracker.finalize_and_export("User requested logout")
             break
-          
-          logger.info(f"Command captured: {full_command}")
 
-          tracker.add_interaction(full_command, backspace_count)
-          backspace_count = 0
-
-          mocked_response = f"bash: {full_command}: command not found\r\n"
-          channel.send(mocked_response.encode("utf-8"))
+          response = shell.execute_command(full_command)
+          channel.send(response.encode("utf-8"))
         
         command_buffer = ""
+        prompt = shell.get_prompt().encode("utf-8")
         channel.send(prompt)
       
       elif char in ("\b", "\x7f"):
@@ -109,6 +111,7 @@ def handle_session(channel, addr, tracker: SessionTracker):
 
 
 def start_sensor(host="0.0.0.0", port=2222):
+  host_key = get_or_generate_rsa_key(RSA_KEY_PATH)
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
   sock.settimeout(1.0)
@@ -118,6 +121,7 @@ def start_sensor(host="0.0.0.0", port=2222):
     sock.listen(100)
     logger.success(f"Sensor SSH listening on {host}:{port}")
 
+    global_vfs = VirtualFileSystem()
     while True:
       try:
         client, addr = sock.accept()
@@ -127,7 +131,7 @@ def start_sensor(host="0.0.0.0", port=2222):
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
       
       transport = paramiko.Transport(client)
-      transport.add_server_key(HOST_KEY)
+      transport.add_server_key(host_key)
       tracker = SessionTracker(addr[0], addr[1], "Pending...")
 
       server = Sensor(tracker)
@@ -147,7 +151,8 @@ def start_sensor(host="0.0.0.0", port=2222):
         logger.error("The client did not open a channel")
         continue
       
-      client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker))
+      shell = VirtualShell(global_vfs)
+      client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker, shell))
       client_thread.daemon = True
       client_thread.start()
 
