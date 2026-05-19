@@ -11,7 +11,7 @@ from nltk.stem import WordNetLemmatizer, porter
 
 from src.proteus.telemetry.models import MitreMapping
 
-CONFIDENCE_THRESHOLD = 0.2
+CONFIDENCE_THRESHOLD = 0.4
 
 logger.add("logs/proteus_mitre_mapper.log", rotation="10 MB")
 

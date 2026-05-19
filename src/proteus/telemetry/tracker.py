@@ -2,15 +2,14 @@ from datetime import datetime, timezone
 
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
 from .models import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
-import uuid
 import threading
 from loguru import logger
 
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
 
 class SessionTracker:
-  def __init__(self, source_ip: str, source_port: int, client_version: str):
-    self.session_id = f"session_{uuid.uuid4().hex}_{source_ip}"
+  def __init__(self, session_id: str, source_ip: str, source_port: int, client_version: str):
+    self.session_id = session_id
     self.start_time = datetime.now(timezone.utc)
 
     self.network_info = NetworkInfo(
@@ -22,6 +21,7 @@ class SessionTracker:
     self.auth_info = None
     self.interactions = []
     self.mitre_mapper = MitreMapper()
+    self.analysis_threads: list[threading.Thread] = []
   
   def add_ssh_client(self, client_version: str):
     self.network_info.ssh_client = client_version
@@ -59,15 +59,23 @@ class SessionTracker:
       except Exception as e:
         logger.error(f"Error during background analysis for command '{command}': {e}")
     
-    ia_thread = threading.Thread(
-      target=background_analisis,
-      args=(interaction, command),
-      daemon=True
-    )
-    ia_thread.start()
+    if command.strip() and not command.startswith("logout") and not command.startswith("exit"):
+      ai_thread = threading.Thread(
+        target=background_analisis,
+        args=(interaction, command),
+        daemon=True
+      )
+      self.analysis_threads.append(ai_thread)
+      ai_thread.start()
   
   def finalize_and_export(self, exit_reason: str):
-
+    if self.analysis_threads:
+      logger.info(f"Syncronizing threads: Waiting for {len(self.analysis_threads)} MITRE analyses to complete...")
+      for thread in self.analysis_threads:
+        if thread.is_alive():
+          thread.join()
+      logger.success("All background analyses have completed.")
+    
     session_meta = SessionInfo(
       start_time=self.start_time,
       end_time=datetime.now(timezone.utc),
