@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+
+from src.proteus.correlation_engine.mitre_mapper import MitreMapper
 from .models import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import uuid
+import threading
 from loguru import logger
 
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
@@ -18,6 +21,7 @@ class SessionTracker:
     self.env_info = None
     self.auth_info = None
     self.interactions = []
+    self.mitre_mapper = MitreMapper()
   
   def add_ssh_client(self, client_version: str):
     self.network_info.ssh_client = client_version
@@ -37,11 +41,30 @@ class SessionTracker:
     )
   
   def add_interaction(self, command: str, backspaces: int):
-    self.interactions.append(InteractionInfo(
+    interaction = InteractionInfo(
       command=command,
       timestamp=datetime.now(timezone.utc),
-      backspaces=backspaces
-    ))
+      backspaces=backspaces,
+      mitre_mapping=None
+    )
+
+    self.interactions.append(interaction)
+
+    def background_analisis(interaction: InteractionInfo, command: str):
+      try:
+        mitre_result = self.mitre_mapper.evaluate_command(command)
+
+        if mitre_result:
+          interaction.mitre_mapping = mitre_result
+      except Exception as e:
+        logger.error(f"Error during background analysis for command '{command}': {e}")
+    
+    ia_thread = threading.Thread(
+      target=background_analisis,
+      args=(interaction, command),
+      daemon=True
+    )
+    ia_thread.start()
   
   def finalize_and_export(self, exit_reason: str):
 
