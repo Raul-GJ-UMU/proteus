@@ -7,8 +7,15 @@ from src.proteus.sensor.sensor import Sensor, handle_session
 from src.proteus.telemetry.tracker import SessionTracker
 
 session_id = f"session_{uuid.uuid4().hex}_192.168.1.50"
-tracker = SessionTracker(session_id, "192.168.1.50", 12345, "OpenSSH_8.0")
+tracker: SessionTracker
 shell = MagicMock()
+
+@pytest.fixture
+def dummy_tracker():
+  return SessionTracker(session_id, "192.168.1.50", 12345, "OpenSSH_8.0")
+
+def test_my_sensor_works(dummy_tracker):
+  assert dummy_tracker.session_id == session_id
 
 class TestProteusSensor:
   def test_check_channel_request(self):
