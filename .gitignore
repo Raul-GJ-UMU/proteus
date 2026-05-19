@@ -224,3 +224,4 @@ secrets/
 #other
 
 filesystem.json
+data/session_*.json

@@ -1,6 +1,5 @@
 from loguru import logger
 from dotenv import load_dotenv
-import os
 from src.proteus.sensor.sensor import start_sensor
 
 logger.add("logs/proteus_main.log", rotation="10 MB")

@@ -1,3 +1,5 @@
+import uuid
+
 import paramiko
 import os
 import socket
@@ -17,7 +19,7 @@ load_dotenv()
 
 RSA_KEY_PATH = os.getenv("PROTEUS_RSA_KEY_FILE")
 
-def get_or_generate_rsa_key(path):
+def get_or_generate_rsa_key(path: str) -> paramiko.RSAKey:
   os.makedirs(os.path.dirname(path), exist_ok=True)
   if os.path.exists(path):
     logger.info(f"Loading RSA key from {path}")
@@ -29,32 +31,32 @@ def get_or_generate_rsa_key(path):
     return key
 
 class Sensor(paramiko.ServerInterface):
-  def __init__(self, tracker):
+  def __init__(self, tracker: SessionTracker):
     self.tracker = tracker
     super().__init__()
   
-  def check_channel_request(self, kind, chanid):
+  def check_channel_request(self, kind: str, chanid: int):
     if kind == "session":
       return OPEN_SUCCEEDED
     return OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
   
-  def check_auth_password(self, username, password):
+  def check_auth_password(self, username: str, password: str):
     self.tracker.add_authentication(username, password)
     logger.info(f"Login attempt captured - User: {username} | Password: {password}")
     return AUTH_SUCCESSFUL
   
-  def get_allowed_auths(self, username):
+  def get_allowed_auths(self, username: str):
     return "password"
   
-  def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
-    term_str = term.decode("utf-8") if isinstance(term, bytes) else str(term)
+  def check_channel_pty_request(self, channel: paramiko.Channel, term: bytes, width: int, height: int, pixelwidth: int, pixelheight: int, modes: bytes):
+    term_str = term.decode("utf-8")
     self.tracker.add_environment(term_str, width, height)
     return True
   
-  def check_channel_shell_request(self, channel):
+  def check_channel_shell_request(self, channel: paramiko.Channel):
     return True
 
-def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
+def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTracker, shell: VirtualShell):
   logger.success("SSH session established")
 
   motd = shell.get_motd()
@@ -86,7 +88,24 @@ def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
         if full_command:
           if full_command.lower() in ("exit", "logout"):
             channel.send(b"logout\r\n")
-            tracker.finalize_and_export("User requested logout")
+
+            def save_session_data():
+              try:
+                session_info_str = tracker.finalize_and_export("User requested logout")
+                with open(f"data/{tracker.session_id}.json", "w") as f:
+                  f.write(session_info_str)
+                logger.success(f"Session {tracker.session_id} saved successfully.")
+              except Exception as e:
+                logger.error(f"Error saving the final session: {e}")
+
+            try:
+              if not channel.closed:
+                channel.close()
+            except Exception as e:
+              pass
+            finally:
+              save_thread = threading.Thread(target=save_session_data)
+              save_thread.start()
             break
 
           response = shell.execute_command(full_command)
@@ -111,6 +130,9 @@ def handle_session(channel, addr, tracker: SessionTracker, shell: VirtualShell):
 
 
 def start_sensor(host="0.0.0.0", port=2222):
+  if not RSA_KEY_PATH:
+    logger.error("PROTEUS_RSA_KEY_FILE not configured in the .env file. Cannot start the sensor without an RSA key.")
+    return
   host_key = get_or_generate_rsa_key(RSA_KEY_PATH)
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -129,10 +151,12 @@ def start_sensor(host="0.0.0.0", port=2222):
         continue
 
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
-      
+
+      session_id = f"session_{uuid.uuid4().hex}_{addr[0]}"
+
       transport = paramiko.Transport(client)
       transport.add_server_key(host_key)
-      tracker = SessionTracker(addr[0], addr[1], "Pending...")
+      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...")
 
       server = Sensor(tracker)
 

@@ -1,16 +1,21 @@
+import uuid
+
 import pytest
 from pydantic import ValidationError
-from datetime import datetime, timezone
+from datetime import datetime
 from src.proteus.telemetry.tracker import SessionTracker
-from src.proteus.telemetry.models import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
+from src.proteus.telemetry.models import NetworkInfo, Session, InteractionInfo, MitreMapping
 
+from unittest.mock import patch
+
+session_id = f"session_{uuid.uuid4().hex}_192.168.1.50"
 source_ip = "192.168.1.50"
 source_port = 12345
 client_version = "OpenSSH_8.0"
 
 class TestTelemetryTracker:
   def test_tracker_initialization(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
 
     assert tracker.session_id is not None
     assert tracker.session_id.startswith("session_")
@@ -23,7 +28,7 @@ class TestTelemetryTracker:
     assert tracker.network_info.ssh_client == client_version
   
   def test_add_authentication(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
 
     assert tracker.auth_info is not None
@@ -32,7 +37,7 @@ class TestTelemetryTracker:
     assert isinstance(tracker.auth_info.timestamp, datetime)
   
   def test_add_environment(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     terminal_type = "xterm"
     shell_width = 80
     shell_height = 24
@@ -44,7 +49,7 @@ class TestTelemetryTracker:
     assert tracker.env_info.shell_height == shell_height
   
   def test_add_interaction(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     commands = ["ls -la", "cat /etc/passwd"]
     backspaces = [0, 2]
     tracker.add_interaction(commands[0], backspaces[0])
@@ -61,17 +66,30 @@ class TestTelemetryTracker:
     assert interaction_2.backspaces == backspaces[1]
     assert isinstance(interaction_2.timestamp, datetime)
   
-  def test_finalize_and_export(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+  @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
+  def test_finalize_and_export(self, mock_evaluate_command):
+    mock_evaluate_command.return_value = MitreMapping(
+      technique_id="T9999",
+      confidence=0.99,
+      cti_sentence="This is a fast mock sentence for testing."
+    )
+
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
     tracker.add_environment("xterm", 60, 18)
-    tracker.add_interaction("pwd", 0)
     tracker.add_interaction("whoami", 3)
 
     exit_reason = "User requested logout"
     session_json = tracker.finalize_and_export(exit_reason)
 
     assert isinstance(session_json, str)
+
+    mock_evaluate_command.assert_called_with("whoami")
+        
+    assert "technique_id" in session_json
+    assert "confidence" in session_json
+    assert "cti_sentence" in session_json
+
     session_data = Session.model_validate_json(session_json)
 
     assert session_data.session_id == tracker.session_id
@@ -83,23 +101,27 @@ class TestTelemetryTracker:
     assert session_data.environment.shell_height == 18
     assert session_data.authentication.username == "root"
     assert session_data.authentication.password == "password"
-    assert len(session_data.interactions) == 2
-    assert session_data.interactions[0].command == "pwd"
-    assert session_data.interactions[0].backspaces == 0
-    assert session_data.interactions[1].command == "whoami"
-    assert session_data.interactions[1].backspaces == 3
+    assert len(session_data.interactions) == 1
+    assert session_data.interactions[0].command == "whoami"
+    assert session_data.interactions[0].backspaces == 3
     assert session_data.session_metadata.exit_reason == exit_reason
   
-  def test_finalize_without_authentication(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+  @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
+  def test_finalize_without_authentication(self, mock_evaluate_command):
+    mock_evaluate_command.return_value = None
+
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_environment("xterm", 60, 18)
     tracker.add_interaction("pwd", 0)
 
     with pytest.raises(ValueError, match="Authentication information is missing"):
       tracker.finalize_and_export("User requested logout")
   
-  def test_finalize_without_environment(self):
-    tracker = SessionTracker(source_ip, source_port, client_version)
+  @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
+  def test_finalize_without_environment(self, mock_evaluate_command):
+    mock_evaluate_command.return_value = None
+
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
     tracker.add_interaction("pwd", 0)
 

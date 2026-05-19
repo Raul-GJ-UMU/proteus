@@ -18,10 +18,16 @@ class AuthenticationInfo(BaseModel):
     password: str = Field(..., description="The password used for authentication")
     timestamp: datetime = Field(..., description="The timestamp of the authentication attempt")
 
+class MitreMapping(BaseModel):
+    technique_id: str = Field(..., description="The MITRE technique ID associated with the command")
+    confidence: float = Field(..., description="The confidence score of the MITRE mapping (between 0 and 1)")
+    cti_sentence: str = Field(..., description="The CTI sentence generated for the command")
+
 class InteractionInfo(BaseModel):
     command: str = Field(..., description="The command executed by the client")
     timestamp: datetime = Field(..., description="The timestamp of the command execution")
     backspaces: int = Field(..., description="The number of backspaces used in the command")
+    mitre_mapping: Optional[MitreMapping] = Field(None, description="The MITRE mapping for the command, if available")
 
 class SessionInfo(BaseModel):
     start_time: datetime = Field(..., description="The start time of the session")

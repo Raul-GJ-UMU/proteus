@@ -5,3 +5,11 @@ loguru==0.7.3
 pytest==7.3.1
 pytest-mock==3.10.0
 pydantic==2.13.4
+nltk==3.9.4
+stix2==3.0.2
+numpy==2.4.5
+mitreattack-python==6.1.0
+scikit-learn==1.8.0
+vt-py==0.22.0
+pandas==3.0.3
+openai==2.37.0
