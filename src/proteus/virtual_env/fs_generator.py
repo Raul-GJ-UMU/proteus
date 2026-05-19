@@ -32,6 +32,8 @@ def build_tree(root_path):
           node["children"] = build_tree(entry.path)["children"]
         else:
           node["type"] = "file"
+          node["content"] = ""
+          node["path"] = entry.path
         
         tree["children"][entry.name] = node
 

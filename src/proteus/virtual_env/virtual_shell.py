@@ -7,7 +7,7 @@ from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
 
-from src.proteus.virtual_env.vfs import FSDirectory, VirtualFileSystem
+from src.proteus.virtual_env.vfs import FSDirectory, FSFile, VirtualFileSystem
 from src.proteus.virtual_env.cowrie.shell.command import MockProtocol
 
 sys.modules['treq'] = MagicMock()
@@ -35,8 +35,8 @@ sys.modules['cowrie.shell.pwd'] = mock_pwd
 logger.add("logs/virtual_shell.log", rotation="10 MB")
 
 class VirtualShell:
-  def __init__(self, vfs):
-    self.vfs: VirtualFileSystem = vfs
+  def __init__(self, vfs: VirtualFileSystem):
+    self.vfs = vfs
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     if current_dir not in sys.path:
@@ -46,6 +46,10 @@ class VirtualShell:
       "pwd": self.do_pwd,
       "cd": self.do_cd,
       "ls": self.do_ls,
+      "rm": self.do_rm,
+      "mkdir": self.do_mkdir,
+      "touch": self.do_touch,
+      "rmdir": self.do_rmdir,
     }
 
     self.cowrie_registry = {}
@@ -104,24 +108,66 @@ class VirtualShell:
     symbol = "#" if current_user == "root" else "$"
     return f"{current_user}@ubuntu:{display_path}{symbol} "
   
-  def execute_command(self, command):
+  def execute_command(self, command: str):
     if not command.strip():
       return ""
+    
+    redirect_file = None
+    is_append = False
+
+    if '>>' in command:
+      parts = command.split('>>', 1)
+      command = parts[0].strip()
+      redirect_file = parts[1].strip()
+      is_append = True
+    elif '>' in command:
+      parts = command.split('>', 1)
+      command = parts[0].strip()
+      redirect_file = parts[1].strip()
     
     parts = command.strip().split()
     cmd = parts[0]
     args = parts[1:]
 
+    output = ""
+
     if cmd in self.commands:
       try:
-        return self.commands[cmd](args)
+        output = self.commands[cmd](args)
       except Exception as e:
         logger.error(f"Error executing command '{cmd}': {e}\r\n")
-        return f"Error: {e}"
+        output = f"Error: {e}"
     else:
-      return self.execute_cowrie_command(cmd, args)
+      output = self.execute_cowrie_command(cmd, args)
+
+    if redirect_file:
+      virtual_path = self.vfs.resolve_path(redirect_file, self.vfs.cwd_path)
+      output_to_write = output if output else ""
+      if self.vfs.get_node(virtual_path) is None:
+        uid = 0
+        gid = 0
+        size = len(output_to_write)
+        mode = "-rw-r--r--"
+        realfile = os.path.join("honeyfs", virtual_path.lstrip("/"))
+        self.vfs.mkfile(virtual_path, uid, gid, size, mode, realfile)
+
+      node = self.vfs.get_node(virtual_path)
+
+      if not isinstance(node, FSFile):
+        return
+
+      if is_append:
+        new_content = node.content + output_to_write
+        node.content = new_content
+        node.size = len(node.content)
+      else:
+        node.content = output_to_write
+        node.size = len(node.content)
+    if redirect_file:
+      return ""
+    return output
   
-  def execute_cowrie_command(self, cmd_name, args):
+  def execute_cowrie_command(self, cmd_name: str, args: list):
     CommandClass = self.cowrie_registry.get(cmd_name)
 
     if not CommandClass:
@@ -139,15 +185,15 @@ class VirtualShell:
       return clean_output
 
     except Exception as e:
-      logger.error(f"Error ejecutando Cowrie mock para {cmd_name}: {e}")
-      return f"bash: {cmd_name}: error interno\r\n"
+      logger.error(f"Error executing Cowrie mock for {cmd_name}: {e}")
+      return f"bash: {cmd_name}: internal error\r\n"
     
   # Command implementations
 
-  def do_pwd(self, args):
+  def do_pwd(self, args: list):
     return self.vfs.cwd_path + "\r\n"
   
-  def do_cd(self, args):
+  def do_cd(self, args: list):
     if not args:
       target_path = "/root"
     else:
@@ -179,7 +225,7 @@ class VirtualShell:
         return None
     return node
   
-  def do_ls(self, args):
+  def do_ls(self, args: list):
     current_dir = self.vfs.current_directory
     
     if not current_dir.children:
@@ -187,3 +233,90 @@ class VirtualShell:
     names = [nodo.name for nodo in current_dir.children.values()]
     
     return "  ".join(names) + "\r\n"
+  
+  def do_rm(self, args: list):
+    if not args:
+      return "rm: missing operand\n"
+    
+    files_to_delete = [arg for arg in args if not arg.startswith('-')]
+    
+    if not files_to_delete:
+      return ""
+
+    output = ""
+    for filename in files_to_delete:
+      virtual_path = self.vfs.resolve_path(filename, self.vfs.cwd_path)
+
+      if self.vfs.get_node(virtual_path) is None:
+        output += f"rm: cannot remove '{filename}': No such file or directory\r\n"
+        continue
+      elif isinstance(self.vfs.get_node(virtual_path), FSDirectory):
+        output += f"rm: cannot remove '{filename}': Is a directory\r\n"
+        continue
+      
+      success = self.vfs.delete_node(virtual_path)
+      
+      if not success:
+        output += f"rm: cannot remove '{filename}': No such file or directory\r\n"
+            
+    return output
+  
+  def do_mkdir(self, args: list):
+    if not args:
+      return "mkdir: missing operand\n"
+    
+    output = ""
+    for dirname in args:
+      virtual_path = self.vfs.resolve_path(dirname, self.vfs.cwd_path)
+      
+      if self.vfs.get_node(virtual_path) is not None:
+        output += f"mkdir: cannot create directory '{dirname}': File exists\r\n"
+        continue
+      
+      self.vfs.mkdir(virtual_path, uid=0, gid=0, size=4096, mode="drwxr-xr-x")
+    
+    return output
+  
+  def do_touch(self, args: list):
+    if not args:
+      return "touch: missing file operand\n"
+    
+    output = ""
+    for filename in args:
+      virtual_path = self.vfs.resolve_path(filename, self.vfs.cwd_path)
+      
+      if self.vfs.get_node(virtual_path) is not None:
+        continue
+      
+      self.vfs.mkfile(virtual_path, uid=0, gid=0, size=0, mode="-rw-r--r--")
+    
+    return output
+  
+  def do_rmdir(self, args: list):
+    if not args:
+      return "rmdir: missing operand\n"
+    
+    output = ""
+    for dirname in args:
+      virtual_path = self.vfs.resolve_path(dirname, self.vfs.cwd_path)
+      
+      node = self.vfs.get_node(virtual_path)
+      
+      if node is None:
+        output += f"rmdir: failed to remove '{dirname}': No such file or directory\r\n"
+        continue
+
+      if not isinstance(node, FSDirectory):
+        output += f"rmdir: failed to remove '{dirname}': Not a directory\r\n"
+        continue
+      
+      if node.children:
+        output += f"rmdir: failed to remove '{dirname}': Directory not empty\r\n"
+        continue
+      
+      success = self.vfs.delete_node(virtual_path)
+      
+      if not success:
+        output += f"rmdir: failed to remove '{dirname}': No such file or directory\r\n"
+            
+    return output
