@@ -1,10 +1,13 @@
+import uuid
+
 import pytest
 from unittest.mock import MagicMock
 from paramiko.common import AUTH_SUCCESSFUL, OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED, OPEN_SUCCEEDED
 from src.proteus.sensor.sensor import Sensor, handle_session
 from src.proteus.telemetry.tracker import SessionTracker
 
-tracker = SessionTracker("192.168.1.50", 12345, "OpenSSH_8.0")
+session_id = f"session_{uuid.uuid4().hex}_192.168.1.50"
+tracker = SessionTracker(session_id, "192.168.1.50", 12345, "OpenSSH_8.0")
 shell = MagicMock()
 
 class TestProteusSensor:
