@@ -115,18 +115,39 @@ def test_touch_creates_file(vfs_and_shell):
   ls_response = shell.execute_command("ls")
   assert "newfile.txt" in ls_response
 
-# cat tests
-
-def test_cat_existing_file(vfs_and_shell):
+def test_touch_missing_operand(vfs_and_shell):
   vfs, shell = vfs_and_shell
-  shell.execute_command("echo secret content > secret.txt")
-  response = shell.execute_command("cat secret.txt")
-  assert "secret content" in response
+  output = shell.execute_command("touch")
+  assert "touch: missing file operand" in output
 
-def test_cat_nonexistent_file(vfs_and_shell):
+def test_touch_existing_file(vfs_and_shell):
   vfs, shell = vfs_and_shell
-  response = shell.execute_command("cat nonexistent.txt")
-  assert response == "-bash: cat: nonexistent.txt: No such file or directory\r\n"
+  shell.execute_command("touch existing.txt")
+  
+  response = shell.execute_command("touch existing.txt")
+  assert response == ""
+
+# mkdir tests
+
+def test_mkdir_creates_directory(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  response = shell.execute_command("mkdir newdir")
+  assert response == ""
+  
+  ls_response = shell.execute_command("ls")
+  assert "newdir" in ls_response
+
+def test_mkdir_missing_operand(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  output = shell.execute_command("mkdir")
+  assert "mkdir: missing operand" in output
+
+def test_mkdir_existing_directory(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("mkdir existingdir")
+  
+  response = shell.execute_command("mkdir existingdir")
+  assert "mkdir: cannot create directory 'existingdir': File exists" in response
 
 # rm tests
 
@@ -143,7 +164,72 @@ def test_rm_deletes_file(vfs_and_shell):
   ls_response_2 = shell.execute_command("ls")
   assert "temp.txt" not in ls_response_2
 
+def test_rm_missing_operand(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  output = shell.execute_command("rm")
+  assert "rm: missing operand" in output
+
 def test_rm_nonexistent_file(vfs_and_shell):
   vfs, shell = vfs_and_shell
   response = shell.execute_command("rm nonexistent.txt")
-  assert response == "-bash: rm: nonexistent.txt: No such file or directory\r\n"
+  assert response == "rm: cannot remove 'nonexistent.txt': No such file or directory\r\n"
+
+def test_rm_directory_fails(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("mkdir somedir")
+  
+  response = shell.execute_command("rm somedir")
+  assert response == "rm: cannot remove 'somedir': Is a directory\r\n"
+
+# rmdir tests
+
+def test_rmdir_deletes_directory(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("mkdir tempdir")
+
+  ls_response_1 = shell.execute_command("ls")
+  assert "tempdir" in ls_response_1
+  
+  response = shell.execute_command("rmdir tempdir")
+  assert response == ""
+  
+  ls_response_2 = shell.execute_command("ls")
+  assert "tempdir" not in ls_response_2
+
+def test_rmdir_missing_operand(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  output = shell.execute_command("rmdir")
+  assert "rmdir: missing operand" in output
+
+def test_rmdir_nonexistent_directory(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  response = shell.execute_command("rmdir nonexistentdir")
+  assert response == "rmdir: failed to remove 'nonexistentdir': No such file or directory\r\n"
+
+def test_rmdir_file_fails(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("touch somefile")
+  
+  response = shell.execute_command("rmdir somefile")
+  assert response == "rmdir: failed to remove 'somefile': Not a directory\r\n"
+
+def test_rmdir_nonempty_directory_fails(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("mkdir somedir")
+  shell.execute_command("touch somedir/file.txt")
+  
+  response = shell.execute_command("rmdir somedir")
+  assert response == "rmdir: failed to remove 'somedir': Directory not empty\r\n"
+
+# cat tests
+
+def test_cat_existing_file(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  shell.execute_command("echo secret content > secret.txt")
+  response = shell.execute_command("cat secret.txt")
+  assert "secret content" in response
+
+def test_cat_nonexistent_file(vfs_and_shell):
+  vfs, shell = vfs_and_shell
+  response = shell.execute_command("cat nonexistent.txt")
+  assert response == "cat: nonexistent.txt: No such file or directory\r\n"

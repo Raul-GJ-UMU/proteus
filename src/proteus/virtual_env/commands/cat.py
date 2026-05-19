@@ -15,7 +15,8 @@ import getopt
 from twisted.python import log
 
 from cowrie.shell.command import HoneyPotCommand
-from cowrie.shell.fs import FileNotFound
+# from cowrie.shell.fs import FileNotFound
+from src.proteus.virtual_env.cowrie.shell.fs import FileNotFound
 
 commands = {}
 

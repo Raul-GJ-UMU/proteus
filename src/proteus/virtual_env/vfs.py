@@ -1,8 +1,9 @@
-from importlib.resources import path
 import os
 import json
 from loguru import logger
 import posixpath
+
+from src.proteus.virtual_env.cowrie.shell.fs import FileNotFound
 
 logger.add("logs/proteus_vfs.log", rotation="10 MB")
 
@@ -145,7 +146,9 @@ class VirtualFileSystem:
     node = self.get_node(virtual_path)
     if node and isinstance(node, FSFile):
       return node.content.encode('utf-8')
-    return b""
+    
+    # If the file is not found in either location, raise FileNotFound
+    raise FileNotFound(virtual_path)
   
   # POSIX
 

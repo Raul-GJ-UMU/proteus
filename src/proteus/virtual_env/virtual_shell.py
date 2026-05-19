@@ -246,6 +246,13 @@ class VirtualShell:
     output = ""
     for filename in files_to_delete:
       virtual_path = self.vfs.resolve_path(filename, self.vfs.cwd_path)
+
+      if self.vfs.get_node(virtual_path) is None:
+        output += f"rm: cannot remove '{filename}': No such file or directory\r\n"
+        continue
+      elif isinstance(self.vfs.get_node(virtual_path), FSDirectory):
+        output += f"rm: cannot remove '{filename}': Is a directory\r\n"
+        continue
       
       success = self.vfs.delete_node(virtual_path)
       
@@ -295,8 +302,12 @@ class VirtualShell:
       
       node = self.vfs.get_node(virtual_path)
       
-      if node is None or not isinstance(node, FSDirectory):
-        output += f"rmdir: failed to remove '{dirname}': No such directory\r\n"
+      if node is None:
+        output += f"rmdir: failed to remove '{dirname}': No such file or directory\r\n"
+        continue
+
+      if not isinstance(node, FSDirectory):
+        output += f"rmdir: failed to remove '{dirname}': Not a directory\r\n"
         continue
       
       if node.children:
@@ -306,6 +317,6 @@ class VirtualShell:
       success = self.vfs.delete_node(virtual_path)
       
       if not success:
-        output += f"rmdir: failed to remove '{dirname}': No such directory\r\n"
+        output += f"rmdir: failed to remove '{dirname}': No such file or directory\r\n"
             
     return output
