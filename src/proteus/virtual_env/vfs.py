@@ -23,21 +23,24 @@ class FSDirectory(FSNode):
     self.children[child.name] = child
   
 class FSFile(FSNode):
-  def __init__(self, name: str, real_honeyfs_path=None, **kwargs):
+  def __init__(self, name: str, path=None, content="", **kwargs):
     super().__init__(name, **kwargs)
-    self.real_honeyfs_path = real_honeyfs_path
+    self.path = path
+    self.content = content
   
-  def read_contents(self):
-    if self.real_honeyfs_path and os.path.exists(self.real_honeyfs_path):
-      with open(self.real_honeyfs_path, 'r', encoding='utf-8') as f:
+  def read_honeyfs_contents(self):
+    honeyfs_path = os.path.join("honeyfs", self.path) if self.path else None
+    if honeyfs_path and os.path.exists(honeyfs_path):
+      with open(honeyfs_path, 'r', encoding='utf-8') as f:
         return f.read()
     return ""
 
 class VirtualFileSystem:
-  def __init__(self, json_path="src/proteus/virtual_env/filesystem.json"):
+  def __init__(self, json_path="src/proteus/virtual_env/filesystem.json", honeyfs_path="honeyfs"):
     self.root: FSDirectory = FSDirectory("/")
     self.current_directory: FSDirectory = self.root
     self.cwd_path: str = "/"
+    self.honeyfs_path = honeyfs_path
 
     self.load_from_json(json_path)
   
@@ -99,7 +102,7 @@ class VirtualFileSystem:
       return node.name + "\r\n"
     else:
       return f"ls: cannot access {path}: No such file or directory\r\n"
-  
+
   def resolve_path(self, path: str, cwd: str):
     return posixpath.normpath(posixpath.join(cwd, path))
 
@@ -116,6 +119,33 @@ class VirtualFileSystem:
       else:
         return None
     return node
+  
+  def delete_node(self, path: str) -> bool:
+    if path == "/":
+      return False
+    
+    parts = path.strip("/").split("/")
+    parent_path = "/" + "/".join(parts[:-1]) if len(parts) > 1 else "/"
+    node_name = parts[-1]
+
+    parent_node = self.get_node(parent_path)
+    if parent_node and isinstance(parent_node, FSDirectory) and node_name in parent_node.children:
+      del parent_node.children[node_name]
+      return True
+    return False
+
+  def file_contents(self, virtual_path: str) -> bytes:
+    # First check if the file exists in the honeyfs directory
+    honeyfs_path = os.path.join(self.honeyfs_path, virtual_path.lstrip("/"))
+    if os.path.exists(honeyfs_path) and os.path.isfile(honeyfs_path):
+      with open(honeyfs_path, 'rb') as f:
+        return f.read()
+    
+    # If not found in honeyfs, check if it's defined in the virtual filesystem
+    node = self.get_node(virtual_path)
+    if node and isinstance(node, FSFile):
+      return node.content.encode('utf-8')
+    return b""
   
   # POSIX
 
@@ -138,7 +168,7 @@ class VirtualFileSystem:
     parent_node = self.get_node(parent_dir_path)
     
     if parent_node and isinstance(parent_node, FSDirectory):
-      new_node = FSDirectory(new_dir_name, uid=uid, gid=gid, size=size)
+      new_node = FSDirectory(new_dir_name, uid=uid, gid=gid, size=size, permissions=mode)
       parent_node.add_child(new_node)
       return True
     return False
@@ -151,7 +181,7 @@ class VirtualFileSystem:
     parent_node = self.get_node(parent_dir_path)
     
     if parent_node and isinstance(parent_node, FSDirectory):
-      new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size)
+      new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size, permissions=mode, path=realfile)
       parent_node.add_child(new_node)
       return True
     return False
