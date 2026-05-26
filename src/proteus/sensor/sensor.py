@@ -56,6 +56,15 @@ class Sensor(paramiko.ServerInterface):
   def check_channel_shell_request(self, channel: paramiko.Channel):
     return True
 
+def save_session_data(tracker: SessionTracker):
+  try:
+    session_info_str = tracker.finalize_and_export("User requested logout")
+    with open(f"data/{tracker.session_id}.json", "w") as f:
+      f.write(session_info_str)
+    logger.success(f"Session {tracker.session_id} saved successfully.")
+  except Exception as e:
+    logger.error(f"Error saving the final session: {e}")
+
 def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTracker, shell: VirtualShell):
   logger.success("SSH session established")
 
@@ -89,22 +98,13 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
           if full_command.lower() in ("exit", "logout"):
             channel.send(b"logout\r\n")
 
-            def save_session_data():
-              try:
-                session_info_str = tracker.finalize_and_export("User requested logout")
-                with open(f"data/{tracker.session_id}.json", "w") as f:
-                  f.write(session_info_str)
-                logger.success(f"Session {tracker.session_id} saved successfully.")
-              except Exception as e:
-                logger.error(f"Error saving the final session: {e}")
-
             try:
               if not channel.closed:
                 channel.close()
             except Exception as e:
               pass
             finally:
-              save_thread = threading.Thread(target=save_session_data)
+              save_thread = threading.Thread(target=save_session_data, args=(tracker,))
               save_thread.start()
             break
 
@@ -125,6 +125,8 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
         command_buffer += char
     except Exception as e:
       logger.error(f"Session error: {e}")
+      save_thread = threading.Thread(target=save_session_data, args=(tracker,))
+      save_thread.start()
       break
   channel.close()
 

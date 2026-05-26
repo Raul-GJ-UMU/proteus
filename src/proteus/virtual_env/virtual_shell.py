@@ -108,7 +108,7 @@ class VirtualShell:
     symbol = "#" if current_user == "root" else "$"
     return f"{current_user}@ubuntu:{display_path}{symbol} "
   
-  def execute_command(self, command: str):
+  def execute_command(self, command: str) -> str:
     if not command.strip():
       return ""
     
@@ -154,7 +154,7 @@ class VirtualShell:
       node = self.vfs.get_node(virtual_path)
 
       if not isinstance(node, FSFile):
-        return
+        return ""
 
       if is_append:
         new_content = node.content + output_to_write
