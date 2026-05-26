@@ -13,3 +13,7 @@ scikit-learn==1.8.0
 vt-py==0.22.0
 pandas==3.0.3
 openai==2.37.0
+pyyaml==6.0.1
+accelerate==1.13.0
+transformers==5.9.0
+torch==2.12.0
