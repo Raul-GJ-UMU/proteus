@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta
+import hashlib
 import importlib
 import pkgutil
+import getopt
 import os
+import socket
 import sys
+import shlex
 from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
@@ -50,6 +54,18 @@ class VirtualShell:
       "mkdir": self.do_mkdir,
       "touch": self.do_touch,
       "rmdir": self.do_rmdir,
+      "uptime": self.do_uptime,
+      "free": self.do_free,
+      "w": self.do_w,
+      "who": self.do_who,
+      "ps": self.do_ps,
+      "grep": self.do_grep,
+      "head": self.do_head,
+      "tail": self.do_tail,
+      "wc": self.do_wc,
+      "ifconfig": self.do_ifconfig,
+      "netstat": self.do_netstat,
+      "ping": self.do_ping
     }
 
     self.cowrie_registry = {}
@@ -115,17 +131,30 @@ class VirtualShell:
     redirect_file = None
     is_append = False
 
-    if '>>' in command:
-      parts = command.split('>>', 1)
-      command = parts[0].strip()
-      redirect_file = parts[1].strip()
-      is_append = True
-    elif '>' in command:
-      parts = command.split('>', 1)
-      command = parts[0].strip()
-      redirect_file = parts[1].strip()
-    
-    parts = command.strip().split()
+    parts = shlex.split(command.strip(), posix=True)
+    for index, token in enumerate(parts):
+      if token == '>>':
+        redirect_file = parts[index + 1] if index + 1 < len(parts) else ""
+        is_append = True
+        parts = parts[:index]
+        break
+      if token == '>':
+        redirect_file = parts[index + 1] if index + 1 < len(parts) else ""
+        parts = parts[:index]
+        break
+      if token.startswith('>>') and len(token) > 2:
+        redirect_file = token[2:]
+        is_append = True
+        parts = parts[:index]
+        break
+      if token.startswith('>') and len(token) > 1:
+        redirect_file = token[1:]
+        parts = parts[:index]
+        break
+
+    if not parts:
+      return ""
+
     cmd = parts[0]
     args = parts[1:]
 
@@ -142,7 +171,7 @@ class VirtualShell:
 
     if redirect_file:
       virtual_path = self.vfs.resolve_path(redirect_file, self.vfs.cwd_path)
-      output_to_write = output if output else ""
+      output_to_write = (output if output else "").replace("\r\n", "\n")
       if self.vfs.get_node(virtual_path) is None:
         uid = 0
         gid = 0
@@ -177,6 +206,13 @@ class VirtualShell:
       mock_protocol = MockProtocol(self.vfs)
       cmd_instance = CommandClass(mock_protocol, *args)
       cmd_instance.start()
+
+      if cmd_name == "ping" and getattr(cmd_instance, "running", False):
+        if getattr(cmd_instance, "max", 0) <= 0:
+          cmd_instance.max = 4
+
+        while getattr(cmd_instance, "running", False):
+          cmd_instance.showreply()
             
       raw_output = cmd_instance.output_buffer
 
@@ -320,3 +356,211 @@ class VirtualShell:
         output += f"rmdir: failed to remove '{dirname}': No such file or directory\r\n"
             
     return output
+  
+  def do_uptime(self, args: list):
+    return " 16:20:00 up 2 days,  4:30,  1 user,  load average: 0.00, 0.01, 0.05\n"
+  
+  def do_free(self, args: list):
+    return (
+      "              total        used        free      shared  buff/cache   available\r\n"
+      "Mem:        2010780      300000     1451796       50000       23944     1638988\r\n"
+      "Swap:       2097148           0     2097148\r\n"
+    )
+  
+  def do_w(self, args: list):
+    return (
+      " 16:20:00 up 2 days,  4:30,  1 user,  load average: 0.00, 0.01, 0.05\n"
+      "USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT\n"
+      "root     pts/0    192.168.1.100    16:00    1.00s  0.02s  0.00s w\n"
+    )
+  
+  def do_who(self, args: list):
+    return "root     pts/0        2026-05-27 16:00 (192.168.1.100)\n"
+  
+  def do_ps(self, args: list):
+    return (
+      "  PID TTY          TIME CMD\n"
+      "    1 ?        00:00:01 init\n"
+      "    2 ?        00:00:00 bash\n"
+      " 1234 pts/0    00:00:00 ps\n"
+    )
+  
+  def do_grep(self, args: list):
+    try:
+      _, clean_args = getopt.getopt(args, "")
+    except Exception:
+      clean_args = [a for a in args if not a.startswith('-')]
+
+    if len(clean_args) < 2:
+      return "Usage: grep [OPTIONS] PATTERN [FILE...]\n"
+
+    pattern = clean_args[0]
+    files = clean_args[1:]
+    output = ""
+    
+    for file in files:
+      try:
+        virtual_path = self.vfs.resolve_path(file, getattr(self.vfs, 'cwd_path', '/root'))
+        content = self.vfs.file_contents(virtual_path).decode('utf-8', errors='replace')
+        for line in content.split('\n'):
+          if pattern in line:
+            output += f"{line}\n"
+      except Exception:
+        output += f"grep: {file}: No such file or directory\n"
+    return output
+  
+  def do_head(self, args: list):
+    try:
+      optlist, clean_args = getopt.getopt(args, "n:")
+    except Exception:
+      return "Usage: head [OPTIONS] FILE\n"
+
+    if len(clean_args) < 1:
+      return "Usage: head [OPTIONS] FILE\n"
+    
+    file = clean_args[0]
+    line_count = 10
+    for opt, opt_value in optlist:
+      if opt == "-n":
+        try:
+          line_count = int(opt_value)
+        except ValueError:
+          return "Usage: head [OPTIONS] FILE\n"
+
+    output = ""
+    
+    try:
+      virtual_path = self.vfs.resolve_path(file, getattr(self.vfs, 'cwd_path', '/root'))
+      content = self.vfs.file_contents(virtual_path).decode('utf-8', errors='replace')
+      lines = content.splitlines()[:line_count]
+      output = "\n".join(lines)
+      if output:
+        output += "\n"
+    except Exception:
+      output += f"head: cannot open '{file}' for reading: No such file or directory\n"
+    
+    return output
+  
+  def do_tail(self, args: list):
+    try:
+      optlist, clean_args = getopt.getopt(args, "n:")
+    except Exception:
+      return "Usage: tail [OPTIONS] FILE\n"
+
+    if len(clean_args) < 1:
+      return "Usage: tail [OPTIONS] FILE\n"
+    
+    file = clean_args[0]
+    line_count = 10
+    for opt, opt_value in optlist:
+      if opt == "-n":
+        try:
+          line_count = int(opt_value)
+        except ValueError:
+          return "Usage: tail [OPTIONS] FILE\n"
+
+    output = ""
+    
+    try:
+      virtual_path = self.vfs.resolve_path(file, getattr(self.vfs, 'cwd_path', '/root'))
+      content = self.vfs.file_contents(virtual_path).decode('utf-8', errors='replace')
+      lines = content.splitlines()[-line_count:]
+      output = "\n".join(lines)
+      if output:
+        output += "\n"
+    except Exception:
+      output += f"tail: cannot open '{file}' for reading: No such file or directory\n"
+    
+    return output
+  
+  def do_wc(self, args: list):
+    try:
+      optlist, clean_args = getopt.getopt(args, "cmlwhv")
+    except Exception:
+      return "Usage: wc [OPTIONS] FILE\n"
+
+    if len(clean_args) < 1:
+      return "Usage: wc [OPTIONS] FILE\n"
+    
+    file = clean_args[0]
+    output = ""
+    
+    try:
+      virtual_path = self.vfs.resolve_path(file, getattr(self.vfs, 'cwd_path', '/root'))
+      content = self.vfs.file_contents(virtual_path).decode('utf-8', errors='replace')
+      lines = content.count("\n")
+      words = len(content.split())
+      chars = len(content.encode("utf-8"))
+
+      selected_options = {opt for opt, _ in optlist}
+      selected_counts = []
+
+      if not selected_options or "-l" in selected_options:
+        selected_counts.append(str(lines))
+      if not selected_options or "-w" in selected_options:
+        selected_counts.append(str(words))
+      if not selected_options or "-c" in selected_options or "-m" in selected_options:
+        selected_counts.append(str(chars))
+
+      output = f"{' '.join(selected_counts)} {file}\n"
+    except Exception:
+      output += f"wc: cannot open '{file}' for reading: No such file or directory\n"
+    
+    return output
+
+  def do_ifconfig(self, args: list):
+    output = self.execute_cowrie_command("ifconfig", args)
+    return output.replace("HWaddr ", "ether ")
+
+  def do_netstat(self, args: list):
+    return self.execute_cowrie_command("netstat", args)
+
+  def do_ping(self, args: list):
+    try:
+      optlist, remaining_args = getopt.getopt(args, "c:i:")
+    except Exception:
+      return "ping: invalid arguments\n"
+
+    if not remaining_args:
+      return (
+        "Usage: ping [-LRUbdfnqrvVaA] [-c count] [-i interval] [-w deadline]\n"
+        "            [-p pattern] [-s packetsize] [-t ttl] [-I interface or address]\n"
+        "            [-M mtu discovery hint] [-S sndbuf]\n"
+        "            [ -T timestamp option ] [ -Q tos ] [hop1 ...] destination\n"
+      )
+
+    host = remaining_args[0].strip()
+    packet_count = 4
+
+    for opt, opt_value in optlist:
+      if opt == "-c":
+        try:
+          packet_count = int(opt_value)
+        except Exception:
+          packet_count = 0
+
+    if packet_count <= 0:
+      return "ping: bad number of packets to transmit.\n"
+
+    try:
+      socket.inet_aton(host)
+      ip_address = host
+    except Exception:
+      digest = hashlib.md5(host.encode("utf-8")).hexdigest()
+      ip_address = ".".join(str(int(digest[index:index + 2], 16)) for index in range(0, 8, 2))
+
+    output_lines = [f"PING {host} ({ip_address}) 56(84) bytes of data."]
+
+    for seq in range(1, packet_count + 1):
+      output_lines.append(
+        f"64 bytes from {host} ({ip_address}): icmp_seq={seq} ttl=50 time={40.0 + seq / 10:.1f} ms"
+      )
+
+    output_lines.append("")
+    output_lines.append(f"--- {host} ping statistics ---")
+    output_lines.append(
+      f"{packet_count} packets transmitted, {packet_count} received, 0% packet loss, time 907ms"
+    )
+    output_lines.append("rtt min/avg/max/mdev = 48.264/50.352/52.441/2.100 ms")
+
+    return "\n".join(output_lines) + "\n"

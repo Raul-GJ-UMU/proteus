@@ -136,11 +136,23 @@ class VirtualFileSystem:
     return False
 
   def file_contents(self, virtual_path: str) -> bytes:
+    if virtual_path.endswith("/proc/meminfo"):
+      return (
+        b"MemTotal:        2010780 kB\n"
+        b"MemFree:         1451796 kB\n"
+        b"MemAvailable:    1638988 kB\n"
+        b"Buffers:           23944 kB\n"
+        b"Cached:           286820 kB\n"
+        b"SwapTotal:       2097148 kB\n"
+        b"SwapFree:        2097148 kB\n"
+      )
     # First check if the file exists in the honeyfs directory
-    honeyfs_path = os.path.join(self.honeyfs_path, virtual_path.lstrip("/"))
+    base_path = os.path.abspath(self.honeyfs_path)
+    honeyfs_path = os.path.join(base_path, virtual_path.lstrip("/"))
     if os.path.exists(honeyfs_path) and os.path.isfile(honeyfs_path):
       with open(honeyfs_path, 'rb') as f:
-        return f.read()
+        content = f.read()
+        return content.replace(b"\r\n", b"\n")  # Normalize line endings to Unix style
     
     # If not found in honeyfs, check if it's defined in the virtual filesystem
     node = self.get_node(virtual_path)
