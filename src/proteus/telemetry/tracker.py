@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
-from .models import NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
+from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import threading
 from loguru import logger
 
@@ -21,6 +21,7 @@ class SessionTracker:
     self.auth_info = None
     self.interactions = []
     self.mitre_mapper = MitreMapper()
+    self.mitre_mapping: list[MitreMapping] = []
     self.analysis_threads: list[threading.Thread] = []
   
   def add_ssh_client(self, client_version: str):
@@ -39,30 +40,29 @@ class SessionTracker:
       shell_width=shell_width,
       shell_height=shell_height
     )
-  
+
   def add_interaction(self, command: str, backspaces: int):
     interaction = InteractionInfo(
       command=command,
       timestamp=datetime.now(timezone.utc),
       backspaces=backspaces,
-      mitre_mapping=None
     )
 
     self.interactions.append(interaction)
 
-    def background_analisis(interaction: InteractionInfo, command: str):
+    def background_analisis(command: str):
       try:
         mitre_result = self.mitre_mapper.evaluate_command(command)
-
         if mitre_result:
-          interaction.mitre_mapping = mitre_result
+          logger.info(f"MITRE mapping for command '{command}': {mitre_result}")
+          self.mitre_mapping = mitre_result
       except Exception as e:
         logger.error(f"Error during background analysis for command '{command}': {e}")
     
     if command.strip() and not command.startswith("logout") and not command.startswith("exit"):
       ai_thread = threading.Thread(
         target=background_analisis,
-        args=(interaction, command),
+        args=(command,),
         daemon=True
       )
       self.analysis_threads.append(ai_thread)
@@ -95,6 +95,7 @@ class SessionTracker:
       environment=self.env_info,
       authentication=self.auth_info,
       interactions=self.interactions,
+      mitre_mapping=self.mitre_mapping,
       session_metadata=session_meta
     )
     logger.info(f"Finalizing session: {self.session_id}")

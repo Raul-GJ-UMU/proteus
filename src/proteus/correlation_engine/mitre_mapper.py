@@ -1,4 +1,5 @@
 import os
+import re
 import pickle
 import numpy as np
 from loguru import logger
@@ -9,9 +10,11 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer, porter
 
+from pydantic import BaseModel, Field
+
 from src.proteus.telemetry.models import MitreMapping
 
-CONFIDENCE_THRESHOLD = 0.4
+CONFIDENCE_THRESHOLD = 0.3
 
 logger.add("logs/proteus_mitre_mapper.log", rotation="10 MB")
 
@@ -26,11 +29,17 @@ except LookupError:
   nltk.download('punkt_tab', quiet=True)
   nltk.download('wordnet', quiet=True)
 
+class Phase(BaseModel):
+  commands_indexes: str = Field(..., description="Comma-separated indexes of the commands in the history that belong to this phase")
+  cti_sentence: str = Field(..., description="The CTI sentence describing the adversary's action for this phase")
+
+
 class MitreMapper:
   def __init__(self):
     self.classifier = None
     self.vectorizer = None
     self.is_loaded = False
+    self.command_history = []
     
     self.lemmatizer = WordNetLemmatizer()
     self.ps = porter.PorterStemmer()
@@ -57,44 +66,65 @@ class MitreMapper:
         logger.error(f"Model file not found: {model_path}")
     except Exception as e:
       logger.error(f"Error loading MITRE model: {e}")
-
-  def _generate_cti_sentence(self, command: str) -> str:
+  
+  def generate_attack_phases(self, history: list[str]) -> list[Phase]:
+    if not history:
+      return []
+    
     if not self.llm_client.api_key:
       raise ValueError("OPENAI_API_KEY not configured in the .env file")
+    
+    history_text = "\n".join([f"[{i+1}] {cmd}" for i, cmd in enumerate(history)])
 
-    prompt = (
-      "Given the following command executed in a terminal by an attacker, "
-      "generate a brief sentence that describes the attack. "
-      "Try to use words in a way that the automatic mapping to MITRE ATT&CK is accurate. "
-      "Example: 'Adversaries may abuse command and script interpreters to execute commands.' "
-      f"Command: {command}"
-    )
+    system_prompt = "Group the bash commands into phases. Answer ONLY with one line per phase using the exact format: [Numbers] Adversaries may <description>."
 
     if not self.llm_model:
       logger.error("OPENAI_MODEL not configured in the .env file. Cannot generate CTI sentence.")
-      return ""
+      return []
     
-    response = self.llm_client.chat.completions.create(
-      model=self.llm_model,
-      messages=[
-        {"role": "system", "content": "You are a Cyber Threat Intelligence expert."},
-        {"role": "user", "content": prompt}
-      ],
-      temperature=0.1,
-      max_tokens=50
-    )
+    try:
+      response = self.llm_client.chat.completions.create(
+        model=self.llm_model,
+        messages = [
+          {"role": "system", "content": system_prompt},
+          {"role": "user", "content": "History:\n[1] whoami\n[2] id\n[3] cat /etc/passwd"},
+          {"role": "assistant", "content": "[1, 2] Adversaries may attempt to identify the primary user, currently logged in user, set of users that commonly uses a system, or whether a user is actively using the system.\n[3] Adversaries may attempt to dump credentials to obtain account login and credential material."},
+          {"role": "user", "content": f"History:\n{history_text}"}
+        ],
+        temperature=0.1,
+        max_tokens=200
+      )
+      raw_output = response.choices[0].message.content
+      if not raw_output:
+        logger.error("Unexpected response from OpenAI: No content received in the response.")
+        return []
+      raw_output = raw_output.strip()
+      logger.debug(f"Raw output from command history evaluation:\n{raw_output}")
 
-    if not response.choices or not response.choices[0].message.content:
-      logger.error("Unexpected response from OpenAI: No content received in the response.")
-      return ""
+      return self.parse_llm_phrases(raw_output)
+    except Exception as e:
+      logger.error(f"Error evaluating command history with LLM: {e}")
+      return []
     
-    raw_text = response.choices[0].message.content.strip()
-    clean_sentence = raw_text.split('\n')[0].strip()
-    clean_sentence = clean_sentence.replace('"', '').replace("'", "")
-    
-    return clean_sentence
+  def parse_llm_phrases(self, raw_output: str) -> list[Phase]:
+    phases: list[Phase] = []
+    pattern = r"\[?(.*?)\]?[:\-]*\s*(Adversaries may[^\n]+)"
+    matches = re.findall(pattern, raw_output, re.IGNORECASE)
 
-  def evaluate_command(self, command: str):
+    for match in matches:
+      indexes_str = match[0].strip()
+      sentence = match[1].strip()
+      clean_sentence = sentence.split('\n')[0].strip()
+      clean_sentence = clean_sentence.replace('"', '').replace("'", "")
+
+      phases.append(Phase(
+        commands_indexes=indexes_str,
+        cti_sentence=clean_sentence
+      ))
+
+    return phases
+
+  def evaluate_command(self, command: str) -> list[MitreMapping] | None:
     if not self.is_loaded or not command.strip():
       return None
 
@@ -103,30 +133,42 @@ class MitreMapper:
       return None
     
     try:
-      cti_sentence = self._generate_cti_sentence(command)
-      logger.debug(f"Generated CTI sentence: {cti_sentence}")
+      self.command_history.append(command)
+      cti_phases = self.generate_attack_phases(self.command_history)
+      logger.debug(f"Generated CTI phases: {cti_phases}")
       
-      word_list = word_tokenize(cti_sentence)
-      lemmatized_list = [self.lemmatizer.lemmatize(w) for w in word_list]
-      stemmed_list = [self.ps.stem(w) for w in lemmatized_list]
-      preprocessed_text = ' '.join(stemmed_list)
-      
-      text_vectorized = self.vectorizer.transform([preprocessed_text])
-      probabilities = self.classifier.predict_proba(text_vectorized)
-      
-      top_index = np.argsort(probabilities[0])[-1]
-      top_label = self.classifier.classes_[top_index]
-      top_confidence = probabilities[0][top_index]
-
-      if top_confidence < CONFIDENCE_THRESHOLD:
+      if not cti_phases:
         return None
+      
+      mappings: list[MitreMapping] = []
+      
+      for phase in cti_phases:
+        command_indexes = phase.commands_indexes
+        cti_sentence = phase.cti_sentence
 
-      mitre_mapping = MitreMapping(
-        technique_id=top_label,
-        confidence=round(float(top_confidence), 3),
-        cti_sentence=cti_sentence
-      )
-      return mitre_mapping
+        word_list = word_tokenize(cti_sentence)
+        lemmatized_list = [self.lemmatizer.lemmatize(w) for w in word_list]
+        preprocessed_text = ' '.join(lemmatized_list)
+        text_vectorized = self.vectorizer.transform([preprocessed_text])
+        probabilities = self.classifier.predict_proba(text_vectorized)
+
+        top_index = np.argsort(probabilities[0])[-1]
+        top_label = self.classifier.classes_[top_index]
+        top_confidence = probabilities[0][top_index]
+
+        if top_confidence < CONFIDENCE_THRESHOLD:
+          logger.warning(f"Low confidence ({top_confidence:.3f}) for command '{command}' with predicted technique '{top_label}'. Skipping MITRE mapping.")
+          continue
+
+        mitre_mapping = MitreMapping(
+          command_indexes=command_indexes,
+          technique_id=top_label,
+          confidence=round(float(top_confidence), 3),
+          cti_sentence=cti_sentence
+        )
+        mappings.append(mitre_mapping)
+      
+      return mappings
         
     except Exception as e:
       logger.error(f"Error in live MITRE prediction: {e}")
