@@ -233,3 +233,248 @@ def test_cat_nonexistent_file(vfs_and_shell):
   vfs, shell = vfs_and_shell
   response = shell.execute_command("cat nonexistent.txt")
   assert response == "cat: nonexistent.txt: No such file or directory\r\n"
+
+# whoami tests
+
+def test_whoami_returns_current_user(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("whoami")
+  
+  assert "root" in output.strip()
+  assert len(output.strip().split("\n")) == 1
+
+# id tests
+
+def test_id_returns_user_info(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("id")
+  
+  assert "uid=" in output
+  assert "gid=" in output
+  assert "groups=" in output
+
+# uname tests
+
+def test_uname_basic(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output_basica = virtual_shell.execute_command("uname")
+  
+  assert "Linux" in output_basica.strip()
+
+def test_uname_all(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output_completa = virtual_shell.execute_command("uname -a")
+  
+  assert "Linux" in output_completa
+
+# hostname tests
+
+def test_hostname_returns_machine_name(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("hostname")
+  
+  assert len(output.strip()) > 0
+
+# users tests
+
+def test_users_returns_logged_in_users(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("users")
+  
+  assert "root" in output
+
+# date tests
+
+def test_date_returns_current_time(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("date")
+  
+  assert len(output.strip()) > 0
+  assert any(str(year) in output for year in range(2020, 2030)) or "UTC" in output or "CET" in output
+
+# uptime tests
+
+def test_uptime_returns_system_uptime(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("uptime")
+  
+  assert "up" in output
+  assert "load average" in output
+
+# free tests
+
+def test_free_returns_memory_info(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("free")
+  
+  assert "Mem:" in output
+  assert "Swap:" in output
+  assert "total" in output.lower()
+
+# w and who tests
+
+def test_w_and_who_return_logged_users(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output_w = virtual_shell.execute_command("w")
+  output_who = virtual_shell.execute_command("who")
+  
+  assert "root" in output_w or "daniel" in output_w
+  assert "pts/" in output_w or "tty" in output_w
+  
+  assert "root" in output_who or "daniel" in output_who
+  assert "pts/" in output_who or "tty" in output_who
+
+# ps tests
+
+def test_ps_returns_process_list(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("ps")
+  
+  assert "PID" in output
+  assert "TTY" in output
+  assert "CMD" in output
+  assert "bash" in output or "sh" in output
+
+# grep tests
+
+def test_grep_finds_matching_lines(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  virtual_shell.execute_command("echo 'line1\nline2\nline3' > testfile.txt")
+  
+  output = virtual_shell.execute_command("grep line2 testfile.txt")
+  
+  assert "line2" in output
+  assert "line1" not in output
+  assert "line3" not in output
+
+def test_grep_no_matches(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  virtual_shell.execute_command("echo 'line1\nline2\nline3' > testfile.txt")
+  
+  output = virtual_shell.execute_command("grep nomatch testfile.txt")
+  
+  assert output == ""
+
+def test_grep_file_not_found(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("grep something nonexistent.txt")
+  
+  assert "No such file or directory" in output
+
+def test_grep_missing_operand(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("grep")
+  
+  assert "Usage: grep [OPTIONS] PATTERN [FILE...]" in output
+
+def test_grep_pattern_only(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("grep pattern")
+  
+  assert "Usage: grep [OPTIONS] PATTERN [FILE...]" in output
+
+# head tests
+
+def test_head_returns_first_lines(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  virtual_shell.execute_command("echo -e 'line1\nline2\nline3\nline4' > testfile.txt")
+  
+  output = virtual_shell.execute_command("head -n 2 testfile.txt")
+  
+  assert "line1" in output
+  assert "line2" in output
+  assert "line3" not in output
+  assert "line4" not in output
+
+def test_head_file_not_found(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("head -n 2 nonexistent.txt")
+  
+  assert "No such file or directory" in output
+
+def test_head_missing_operand(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("head -n 2")
+  
+  assert "Usage: head [OPTIONS] FILE" in output
+
+# tail tests
+
+def test_tail_returns_last_lines(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  virtual_shell.execute_command("echo -e 'line1\nline2\nline3\nline4' > testfile.txt")
+  
+  output = virtual_shell.execute_command("tail -n 2 testfile.txt")
+  
+  assert "line3" in output
+  assert "line4" in output
+  assert "line1" not in output
+  assert "line2" not in output
+
+def test_tail_file_not_found(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("tail -n 2 nonexistent.txt")
+  
+  assert "No such file or directory" in output
+
+def test_tail_missing_operand(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("tail -n 2")
+  
+  assert "Usage: tail [OPTIONS] FILE" in output
+
+# wc tests
+
+def test_wc_counts_lines_words_bytes(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  virtual_shell.execute_command("echo -e 'line1 line1\nline2 line2\nline3 line3' > testfile.txt")
+  
+  output = virtual_shell.execute_command("wc testfile.txt")
+  
+  assert "3" in output  # lines
+  assert "6" in output  # words
+  assert "36" in output # bytes (including newlines)
+
+def test_wc_file_not_found(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("wc nonexistent.txt")
+  
+  assert "No such file or directory" in output
+
+def test_wc_missing_operand(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("wc")
+  
+  assert "Usage: wc [OPTIONS] FILE" in output
+
+# ifconfig tests
+
+def test_ifconfig_returns_network_info(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("ifconfig")
+  
+  assert "inet " in output
+  assert "ether " in output
+  assert "lo" in output or "eth0" in output
+
+# netstat tests
+
+def test_netstat_returns_network_connections(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("netstat -tuln")
+  
+  assert "Proto" in output
+  assert "Local Address" in output
+  assert "Foreign Address" in output
+  assert "LISTEN" in output
+
+# ping tests
+
+def test_ping_returns_ping_output(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("ping -c 3 8.8.8.8")
+        
+  assert "PING 8.8.8.8" in output
+  assert "bytes from 8.8.8.8" in output
+  assert "icmp_seq=1" in output
+  assert "packet loss" in output
