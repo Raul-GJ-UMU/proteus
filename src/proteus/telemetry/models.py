@@ -19,6 +19,7 @@ class AuthenticationInfo(BaseModel):
     timestamp: datetime = Field(..., description="The timestamp of the authentication attempt")
 
 class MitreMapping(BaseModel):
+    command_indexes: str = Field(..., description="Comma-separated indexes of the commands in the history that belong to this mapping")
     technique_id: str = Field(..., description="The MITRE technique ID associated with the command")
     confidence: float = Field(..., description="The confidence score of the MITRE mapping (between 0 and 1)")
     cti_sentence: str = Field(..., description="The CTI sentence generated for the command")
@@ -27,7 +28,6 @@ class InteractionInfo(BaseModel):
     command: str = Field(..., description="The command executed by the client")
     timestamp: datetime = Field(..., description="The timestamp of the command execution")
     backspaces: int = Field(..., description="The number of backspaces used in the command")
-    mitre_mapping: Optional[MitreMapping] = Field(None, description="The MITRE mapping for the command, if available")
 
 class SessionInfo(BaseModel):
     start_time: datetime = Field(..., description="The start time of the session")
@@ -41,4 +41,5 @@ class Session(BaseModel):
     environment: EnvironmentInfo = Field(..., description="The environment information of the session")
     authentication: AuthenticationInfo = Field(..., description="The authentication information of the session")
     interactions: list[InteractionInfo] = Field(..., description="The list of interactions during the session")
+    mitre_mapping: list[MitreMapping] = Field(..., description="The MITRE mapping for the session, if available")
     session_metadata: SessionInfo = Field(..., description="The metadata of the session")
