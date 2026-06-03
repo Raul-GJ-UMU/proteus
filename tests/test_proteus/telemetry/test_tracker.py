@@ -68,11 +68,14 @@ class TestTelemetryTracker:
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_and_export(self, mock_evaluate_command):
-    mock_evaluate_command.return_value = MitreMapping(
-      technique_id="T9999",
-      confidence=0.99,
-      cti_sentence="This is a fast mock sentence for testing."
-    )
+    mock_evaluate_command.return_value = [
+      MitreMapping(
+        command_indexes="1",
+        technique_id="T9999",
+        confidence=0.99,
+        cti_sentence="This is a fast mock sentence for testing."
+      )
+    ]
 
     tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
@@ -105,10 +108,11 @@ class TestTelemetryTracker:
     assert session_data.interactions[0].command == "whoami"
     assert session_data.interactions[0].backspaces == 3
     assert session_data.session_metadata.exit_reason == exit_reason
+    assert session_data.mitre_mapping[0].technique_id == "T9999"
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_without_authentication(self, mock_evaluate_command):
-    mock_evaluate_command.return_value = None
+    mock_evaluate_command.return_value = []
 
     tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_environment("xterm", 60, 18)
@@ -119,7 +123,7 @@ class TestTelemetryTracker:
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_without_environment(self, mock_evaluate_command):
-    mock_evaluate_command.return_value = None
+    mock_evaluate_command.return_value = []
 
     tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
