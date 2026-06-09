@@ -4,12 +4,14 @@ import importlib
 import pkgutil
 import getopt
 import os
+from random import randint
 import socket
 import sys
 import shlex
 from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
+from pydantic import BaseModel, Field
 
 from src.proteus.virtual_env.vfs import FSDirectory, FSFile, VirtualFileSystem
 from src.proteus.virtual_env.cowrie.shell.command import MockProtocol
@@ -38,9 +40,51 @@ sys.modules['cowrie.shell.pwd'] = mock_pwd
 
 logger.add("logs/virtual_shell.log", rotation="10 MB")
 
+class ProcessData(BaseModel):
+  user: str = Field(..., description="The user who owns the process")
+  pid: int = Field(..., description="The process ID")
+  cpu_usage: float = Field(..., description="The CPU usage of the process")
+  memory_usage: float = Field(..., description="The memory usage of the process")
+  vsz: int = Field(..., description="The virtual memory size of the process")
+  rss: int = Field(..., description="The resident set size of the process")
+  tty: str = Field(..., description="The terminal associated with the process")
+  stat: str = Field(..., description="The process state")
+  start_time: str = Field(..., description="The start time of the process")
+  time: str = Field(..., description="The cumulative CPU time of the process")
+  command: str = Field(..., description="The command that started the process")
+
 class VirtualShell:
   def __init__(self, vfs: VirtualFileSystem):
     self.vfs = vfs
+    self.current_user = "root"
+    self.current_tty = "tty1"
+    self.process_list: list[ProcessData] = []
+    self.process_list.append(ProcessData(
+       user="user",
+       pid=974,
+       cpu_usage=0.0,
+       memory_usage=0.2,
+       vsz=8744,
+       rss=5488,
+       tty="tty1",
+       stat="S",
+       start_time="15:17",
+       time="0:00",
+       command="bash"
+    ))
+    self.process_list.append(ProcessData(
+       user="root",
+       pid=1,
+       cpu_usage=0.0,
+       memory_usage=0.5,
+       vsz=166256,
+       rss=11704,
+       tty="?",
+       stat="Ss",
+       start_time="15:12",
+       time="0:01",
+       command="/sbin/init"
+    ))
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     if current_dir not in sys.path:
@@ -378,12 +422,96 @@ class VirtualShell:
     return "root     pts/0        2026-05-27 16:00 (192.168.1.100)\n"
   
   def do_ps(self, args: list):
-    return (
-      "  PID TTY          TIME CMD\n"
-      "    1 ?        00:00:01 init\n"
-      "    2 ?        00:00:00 bash\n"
-      " 1234 pts/0    00:00:00 ps\n"
+    columns: list[str] = ["USER", "PID", "%CPU", "%MEM", "VSZ", "RSS", "TTY", "STAT", "START", "TIME", "COMMAND"]
+    field_map = {
+      "USER": "user",
+      "PID": "pid",
+      "%CPU": "cpu_usage",
+      "%MEM": "memory_usage",
+      "VSZ": "vsz",
+      "RSS": "rss",
+      "TTY": "tty",
+      "STAT": "stat",
+      "START": "start_time",
+      "TIME": "time",
+      "COMMAND": "command",
+    }
+
+    command_name = "ps" if not args else f"ps {' '.join(args)}"
+    ps_process = ProcessData(
+      user=self.current_user,
+      pid=randint(1000, 2000),
+      cpu_usage=0.1,
+      memory_usage=0.5,
+      vsz=10276,
+      rss=3860,
+      tty=self.current_tty,
+      stat="R+",
+      start_time=datetime.now().strftime("%H:%M"),
+      time="0:00",
+      command=command_name
     )
+    self.process_list.append(ps_process)
+
+    try:
+      normalized_args = [arg.lstrip("-") for arg in args if arg and arg != "--"]
+      option_flags = "".join(arg for arg in normalized_args if arg.isalpha()).lower()
+
+      if not normalized_args:
+        columns_to_show = ["PID", "TTY", "TIME", "COMMAND"]
+      elif "aux" in normalized_args or option_flags == "aux" or set(option_flags) >= {"a", "u", "x"}:
+        columns_to_show = columns
+      elif "ef" in normalized_args or option_flags == "ef" or set(option_flags) >= {"e", "f"}:
+        columns_to_show = columns
+      else:
+        requested_columns = {arg.upper() for arg in normalized_args}
+        columns_to_show = [col for col in columns if col in requested_columns]
+        if not columns_to_show:
+          columns_to_show = ["PID", "TTY", "TIME", "COMMAND"]
+
+      visible_processes = self.process_list
+      if not normalized_args:
+        visible_processes = [
+          proc for proc in self.process_list
+          if proc.user == self.current_user and proc.tty == self.current_tty
+        ]
+
+      rendered_rows: list[dict[str, str]] = []
+      column_widths = {col: len(col) for col in columns_to_show}
+
+      for proc in visible_processes:
+        proc_dict = proc.model_dump()
+        rendered_row = {}
+        for col in columns_to_show:
+          value = str(proc_dict[field_map[col]])
+          if col in {"%CPU", "%MEM"}:
+            value = f"{float(value):.1f}"
+          rendered_row[col] = value
+          column_widths[col] = max(column_widths[col], len(value))
+        rendered_rows.append(rendered_row)
+
+      output_lines = [
+        "  ".join(
+          col.rjust(column_widths[col]) if col in {"PID", "VSZ", "RSS", "%CPU", "%MEM"}
+          else col.ljust(column_widths[col])
+          for col in columns_to_show
+        )
+      ]
+
+      for rendered_row in rendered_rows:
+        line_parts = []
+        for col in columns_to_show:
+          value = rendered_row[col]
+          if col in {"PID", "VSZ", "RSS", "%CPU", "%MEM"}:
+            line_parts.append(value.rjust(column_widths[col]))
+          else:
+            line_parts.append(value.ljust(column_widths[col]))
+        output_lines.append("  ".join(line_parts))
+
+      return "\r\n".join(output_lines) + "\r\n"
+    finally:
+      if ps_process in self.process_list:
+        self.process_list.remove(ps_process)
   
   def do_grep(self, args: list):
     try:
