@@ -35,7 +35,7 @@ class Phase(BaseModel):
 
 
 class MitreMapper:
-  def __init__(self):
+  def __init__(self, llm_client, llm_model):
     self.classifier = None
     self.vectorizer = None
     self.is_loaded = False
@@ -44,11 +44,8 @@ class MitreMapper:
     self.lemmatizer = WordNetLemmatizer()
     self.ps = porter.PorterStemmer()
 
-    self.llm_client = OpenAI(
-      base_url=os.getenv("OPENAI_BASE_URL"),
-      api_key=os.getenv("OPENAI_API_KEY")
-    )
-    self.llm_model = os.getenv("OPENAI_MODEL")
+    self.llm_client = llm_client
+    self.llm_model = llm_model
     
     self._load_models()
 

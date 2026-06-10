@@ -53,12 +53,19 @@ class ProcessData(BaseModel):
   time: str = Field(..., description="The cumulative CPU time of the process")
   command: str = Field(..., description="The command that started the process")
 
+class NetworkConnection(BaseModel):
+  protocol: str = Field(..., description="The protocol of the network connection (e.g., TCP, UDP)")
+  local_address: str = Field(..., description="The local address and port (e.g., 127.0.0.1:8080)")
+  remote_address: str = Field(..., description="The remote address and port (e.g., 192.168.1.1:443)")
+  state: str = Field(..., description="The state of the network connection (e.g., ESTABLISHED, LISTEN)")
+
 class VirtualShell:
   def __init__(self, vfs: VirtualFileSystem):
     self.vfs = vfs
     self.current_user = "root"
     self.current_tty = "tty1"
     self.process_list: list[ProcessData] = []
+    self.network_connections: list[NetworkConnection] = [] # Future use
     self.process_list.append(ProcessData(
        user="user",
        pid=974,
@@ -86,6 +93,13 @@ class VirtualShell:
        command="/sbin/init"
     ))
 
+    self.network_connections.append(NetworkConnection(
+      protocol="TCP",
+      local_address="127.0.0.1:8080",
+      remote_address="192.168.1.1:443",
+      state="ESTABLISHED"
+    ))
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     if current_dir not in sys.path:
       sys.path.insert(0, current_dir)
@@ -107,8 +121,6 @@ class VirtualShell:
       "head": self.do_head,
       "tail": self.do_tail,
       "wc": self.do_wc,
-      "ifconfig": self.do_ifconfig,
-      "netstat": self.do_netstat,
       "ping": self.do_ping
     }
 
@@ -168,6 +180,12 @@ class VirtualShell:
     symbol = "#" if current_user == "root" else "$"
     return f"{current_user}@ubuntu:{display_path}{symbol} "
   
+  def inject_fake_process(self, process_data: ProcessData):
+    self.process_list.append(process_data)
+  
+  def inject_fake_network_connection(self, connection: dict):
+    self.network_connections.append(NetworkConnection(**connection))
+
   def execute_command(self, command: str) -> str:
     if not command.strip():
       return ""
@@ -222,7 +240,7 @@ class VirtualShell:
         size = len(output_to_write)
         mode = "-rw-r--r--"
         realfile = os.path.join("honeyfs", virtual_path.lstrip("/"))
-        self.vfs.mkfile(virtual_path, uid, gid, size, mode, realfile)
+        self.vfs.mkfile_p(virtual_path, uid, gid, size, mode, realfile)
 
       node = self.vfs.get_node(virtual_path)
 
@@ -368,7 +386,7 @@ class VirtualShell:
       if self.vfs.get_node(virtual_path) is not None:
         continue
       
-      self.vfs.mkfile(virtual_path, uid=0, gid=0, size=0, mode="-rw-r--r--")
+      self.vfs.mkfile_p(virtual_path, uid=0, gid=0, size=0, mode="-rw-r--r--")
     
     return output
   
@@ -635,13 +653,6 @@ class VirtualShell:
       output += f"wc: cannot open '{file}' for reading: No such file or directory\n"
     
     return output
-
-  def do_ifconfig(self, args: list):
-    output = self.execute_cowrie_command("ifconfig", args)
-    return output.replace("HWaddr ", "ether ")
-
-  def do_netstat(self, args: list):
-    return self.execute_cowrie_command("netstat", args)
 
   def do_ping(self, args: list):
     try:

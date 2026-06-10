@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from src.proteus.decision_engine.engage_parser import EngageParser
+from src.proteus.decision_engine.engage_engine import EngageEngine
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
 from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import threading
@@ -8,7 +10,17 @@ from loguru import logger
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
 
 class SessionTracker:
-  def __init__(self, session_id: str, source_ip: str, source_port: int, client_version: str):
+  def __init__(
+    self, 
+    session_id: str, 
+    source_ip: str, 
+    source_port: int, 
+    client_version: str,
+    llm_client,
+    llm_model,
+    engage_parser: EngageParser,
+    decision_engine: EngageEngine
+  ):
     self.session_id = session_id
     self.start_time = datetime.now(timezone.utc)
 
@@ -20,10 +32,12 @@ class SessionTracker:
     self.env_info = None
     self.auth_info = None
     self.interactions = []
-    self.mitre_mapper = MitreMapper()
+    self.mitre_mapper = MitreMapper(llm_client, llm_model)
     self.mitre_mapping: list[MitreMapping] = []
     self.analysis_threads: list[threading.Thread] = []
-  
+    self.engage_parser = engage_parser
+    self.decision_engine = decision_engine
+
   def add_ssh_client(self, client_version: str):
     self.network_info.ssh_client = client_version
 
@@ -56,6 +70,10 @@ class SessionTracker:
         if mitre_result:
           logger.info(f"MITRE mapping for command '{command}': {mitre_result}")
           self.mitre_mapping = mitre_result
+          for mitre_mapping in mitre_result:
+            if mitre_mapping.confidence >= 0.5:
+              engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_mapping.technique_id)
+              self.decision_engine.evaluate_and_react(engage_details)
       except Exception as e:
         logger.error(f"Error during background analysis for command '{command}': {e}")
     
@@ -67,6 +85,7 @@ class SessionTracker:
       )
       self.analysis_threads.append(ai_thread)
       ai_thread.start()
+
   
   def finalize_and_export(self, exit_reason: str):
     if self.analysis_threads:

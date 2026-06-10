@@ -1,5 +1,6 @@
 import os
 import json
+from typing import Any
 from loguru import logger
 import posixpath
 
@@ -162,6 +163,24 @@ class VirtualFileSystem:
     # If the file is not found in either location, raise FileNotFound
     raise FileNotFound(virtual_path)
   
+  def override_file_contents(self, virtual_path: str, new_content: bytes):
+    node = self.get_node(virtual_path)
+    if node and isinstance(node, FSFile):
+      node.content = new_content.decode('utf-8')
+      return True
+    return False
+
+  def override_file_metadata(self, virtual_path: str, new_metadata: dict[str, Any]):
+    node = self.get_node(virtual_path)
+    if node:
+      node.name = new_metadata.get("name", node.name)
+      node.uid = new_metadata.get("uid", node.uid)
+      node.gid = new_metadata.get("gid", node.gid)
+      node.size = new_metadata.get("size", node.size)
+      node.permissions = new_metadata.get("permissions", node.permissions)
+      return True
+    return False
+  
   # POSIX
 
   def exists(self, path: str):
@@ -199,4 +218,67 @@ class VirtualFileSystem:
       new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size, permissions=mode, path=realfile)
       parent_node.add_child(new_node)
       return True
+    return False
+
+  def _ensure_directory_path(self, path: str, uid: int, gid: int, size: int = 4096, mode: str = "drwxr-xr-x"):
+    normalized_path = posixpath.normpath(path)
+
+    if normalized_path in ("", ".", "/"):
+      return self.root
+
+    parts = normalized_path.strip("/").split("/")
+    current_node: FSDirectory = self.root
+
+    for part in parts:
+      next_node = current_node.children.get(part)
+
+      if next_node is None:
+        next_node = FSDirectory(part, uid=uid, gid=gid, size=size, permissions=mode)
+        current_node.add_child(next_node)
+      elif not isinstance(next_node, FSDirectory):
+        return None
+
+      current_node = next_node
+
+    return current_node
+
+  def mkdir_p(self, path: str, uid: int, gid: int, size: int, mode: str):
+    import posixpath
+
+    normalized_path = posixpath.normpath(path)
+    if normalized_path == "/":
+      return True
+
+    parent_dir_path = posixpath.dirname(normalized_path)
+    new_dir_name = posixpath.basename(normalized_path)
+
+    parent_node = self._ensure_directory_path(parent_dir_path, uid, gid)
+    if parent_node and isinstance(parent_node, FSDirectory):
+      existing_node = parent_node.children.get(new_dir_name)
+      if existing_node is not None:
+        return isinstance(existing_node, FSDirectory)
+
+      new_node = FSDirectory(new_dir_name, uid=uid, gid=gid, size=size, permissions=mode)
+      parent_node.add_child(new_node)
+      return True
+
+    return False
+
+  def mkfile_p(self, path: str, uid: int, gid: int, size: int, mode: str, realfile=None):
+    import posixpath
+
+    normalized_path = posixpath.normpath(path)
+    parent_dir_path = posixpath.dirname(normalized_path)
+    new_file_name = posixpath.basename(normalized_path)
+
+    parent_node = self._ensure_directory_path(parent_dir_path, uid, gid)
+    if parent_node and isinstance(parent_node, FSDirectory):
+      existing_node = parent_node.children.get(new_file_name)
+      if existing_node is not None:
+        return isinstance(existing_node, FSFile)
+
+      new_node = FSFile(new_file_name, uid=uid, gid=gid, size=size, permissions=mode, path=realfile)
+      parent_node.add_child(new_node)
+      return True
+
     return False

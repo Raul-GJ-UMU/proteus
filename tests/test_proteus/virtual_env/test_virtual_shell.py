@@ -127,6 +127,23 @@ def test_touch_existing_file(vfs_and_shell):
   response = shell.execute_command("touch existing.txt")
   assert response == ""
 
+def test_mkdir_p_creates_missing_parents(vfs_and_shell):
+  vfs, _ = vfs_and_shell
+
+  assert vfs.mkdir_p("/home/dir1/dir2", uid=0, gid=0, size=4096, mode="drwxr-xr-x")
+  assert vfs.isdir("/home")
+  assert vfs.isdir("/home/dir1")
+  assert vfs.isdir("/home/dir1/dir2")
+
+def test_mkfile_p_creates_missing_parents(vfs_and_shell):
+  vfs, _ = vfs_and_shell
+
+  assert vfs.mkfile_p("/home/dir1/dir2/file1.txt", uid=0, gid=0, size=0, mode="-rw-r--r--")
+  assert vfs.isdir("/home")
+  assert vfs.isdir("/home/dir1")
+  assert vfs.isdir("/home/dir1/dir2")
+  assert vfs.isfile("/home/dir1/dir2/file1.txt")
+
 # mkdir tests
 
 def test_mkdir_creates_directory(vfs_and_shell):

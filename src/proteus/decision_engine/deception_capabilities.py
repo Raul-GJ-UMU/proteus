@@ -1,14 +1,11 @@
+from typing import Any
+
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell
 
 class DeceptionCapabilites:
 
   # File Deception
-
-  @staticmethod
-  def deploy_file(vfs: VirtualFileSystem, cwd: str, file_name: str, file_content: str, file_metadata: dict[str, Any] | None) -> str:
-    #TODO
-    pass
 
   @staticmethod
   def modify_file_metadata(vfs: VirtualFileSystem, file_path: str, new_metadata: dict[str, Any]) -> None:

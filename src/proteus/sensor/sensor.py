@@ -1,5 +1,7 @@
+from datetime import datetime
 import uuid
 
+from openai import OpenAI
 import paramiko
 import os
 import socket
@@ -8,6 +10,8 @@ from paramiko.common import OPEN_SUCCEEDED, OPEN_FAILED_ADMINISTRATIVELY_PROHIBI
 from loguru import logger
 import threading
 
+from src.proteus.decision_engine.engage_parser import EngageParser
+from src.proteus.decision_engine.engage_engine import EngageEngine
 from src.proteus.telemetry.tracker import SessionTracker
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
@@ -146,6 +150,23 @@ def start_sensor(host="0.0.0.0", port=2222):
     logger.success(f"Sensor SSH listening on {host}:{port}")
 
     global_vfs = VirtualFileSystem()
+
+    llm_client = OpenAI(
+      base_url=os.getenv("OPENAI_BASE_URL"),
+      api_key=os.getenv("OPENAI_API_KEY")
+    )
+    llm_model = os.getenv("OPENAI_MODEL")
+
+    if not llm_model:
+      logger.error("OPENAI_MODEL not configured in the .env file. Cannot generate CTI sentence.")
+      return
+    if not llm_client.api_key:
+      logger.error("OPENAI_API_KEY not configured in the .env file. Cannot generate CTI sentence.")
+      return
+    if not llm_client.base_url:
+      logger.error("OPENAI_BASE_URL not configured in the .env file. Cannot generate CTI sentence.")
+      return
+    
     while True:
       try:
         client, addr = sock.accept()
@@ -154,11 +175,22 @@ def start_sensor(host="0.0.0.0", port=2222):
 
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
 
-      session_id = f"session_{uuid.uuid4().hex}_{addr[0]}"
+      session_id = f"session_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[-8:]}_{addr[0]}"
+      
+      shell = VirtualShell(global_vfs)
+
+      engage_parser = EngageParser()
+
+      decision_engine = EngageEngine(
+        vfs=global_vfs,
+        virtual_shell=shell,
+        llm_client=llm_client,
+        llm_model=llm_model
+      )
 
       transport = paramiko.Transport(client)
       transport.add_server_key(host_key)
-      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...")
+      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, llm_model, engage_parser, decision_engine)
 
       server = Sensor(tracker)
 
@@ -177,7 +209,6 @@ def start_sensor(host="0.0.0.0", port=2222):
         logger.error("The client did not open a channel")
         continue
       
-      shell = VirtualShell(global_vfs)
       client_thread = threading.Thread(target=handle_session, args=(channel, addr, tracker, shell))
       client_thread.daemon = True
       client_thread.start()
