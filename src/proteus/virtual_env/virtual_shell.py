@@ -59,6 +59,13 @@ class NetworkConnection(BaseModel):
   remote_address: str = Field(..., description="The remote address and port (e.g., 192.168.1.1:443)")
   state: str = Field(..., description="The state of the network connection (e.g., ESTABLISHED, LISTEN)")
 
+
+class ShellTerminationError(RuntimeError):
+  def __init__(self, output: str, exit_reason: str):
+    super().__init__(exit_reason)
+    self.output = output
+    self.exit_reason = exit_reason
+
 class VirtualShell:
   def __init__(self, vfs: VirtualFileSystem):
     self.vfs = vfs
@@ -121,7 +128,8 @@ class VirtualShell:
       "head": self.do_head,
       "tail": self.do_tail,
       "wc": self.do_wc,
-      "ping": self.do_ping
+      "ping": self.do_ping,
+      "clear": self.do_clear
     }
 
     self.cowrie_registry = {}
@@ -186,6 +194,36 @@ class VirtualShell:
   def inject_fake_network_connection(self, connection: dict):
     self.network_connections.append(NetworkConnection(**connection))
 
+  def _build_shutdown_output(self, mode: str) -> str:
+    return (
+      "\r\n"
+      f"Broadcast message from root@ubuntu (pts/0) ({datetime.now().ctime()}):\r\n\r\n"
+      f"The system is going down for {mode} NOW!\r\n"
+    )
+
+  def _check_termination(self, cmd: str, args: list[str]):
+    normalized_cmd = posixpath.basename(cmd)
+    normalized_args = {arg.lower() for arg in args}
+    
+    if normalized_cmd == "reboot":
+      output = self._build_shutdown_output("reboot")
+      raise ShellTerminationError(output, "System reboot requested")
+
+    if normalized_cmd == "poweroff":
+      output = self._build_shutdown_output("power off")
+      raise ShellTerminationError(output, "System power off requested")
+
+    if normalized_cmd == "shutdown":
+      if "--help" in normalized_args or "-c" in normalized_args:
+        return
+
+      if "-r" in normalized_args or "--reboot" in normalized_args:
+        output = self._build_shutdown_output("reboot")
+        raise ShellTerminationError(output, "System reboot requested")
+
+      output = self._build_shutdown_output("power off")
+      raise ShellTerminationError(output, "System shutdown requested")
+
   def execute_command(self, command: str) -> str:
     if not command.strip():
       return ""
@@ -219,6 +257,8 @@ class VirtualShell:
 
     cmd = parts[0]
     args = parts[1:]
+
+    self._check_termination(cmd, args)
 
     output = ""
 
@@ -703,3 +743,6 @@ class VirtualShell:
     output_lines.append("rtt min/avg/max/mdev = 48.264/50.352/52.441/2.100 ms")
 
     return "\n".join(output_lines) + "\n"
+  
+  def do_clear(self, args: list):
+    return "\033[H\033[J"

@@ -140,7 +140,7 @@ class EngageEngine:
       )
 
   def _build_capability_options(self, capability_name: str) -> object:
-    default_process = self.virtual_shell.process_list[0] if self.virtual_shell.process_list else ProcessData(
+    default_process = ProcessData(
       user=self.virtual_shell.current_user,
       pid=1000,
       cpu_usage=0.0,
@@ -151,7 +151,7 @@ class EngageEngine:
       stat="S",
       start_time="00:00",
       time="0:00",
-      command="bash",
+      command="example_process",
     )
     default_connection = (
       self.virtual_shell.network_connections[0].model_dump()

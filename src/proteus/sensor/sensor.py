@@ -15,7 +15,7 @@ from src.proteus.decision_engine.engage_engine import EngageEngine
 from src.proteus.telemetry.tracker import SessionTracker
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
-from src.proteus.virtual_env.virtual_shell import VirtualShell
+from src.proteus.virtual_env.virtual_shell import ShellTerminationError, VirtualShell
 
 logger.add("logs/proteus_sensor.log", rotation="10 MB")
 
@@ -60,9 +60,9 @@ class Sensor(paramiko.ServerInterface):
   def check_channel_shell_request(self, channel: paramiko.Channel):
     return True
 
-def save_session_data(tracker: SessionTracker):
+def save_session_data(tracker: SessionTracker, exit_reason: str = "User requested logout"):
   try:
-    session_info_str = tracker.finalize_and_export("User requested logout")
+    session_info_str = tracker.finalize_and_export(exit_reason)
     with open(f"data/{tracker.session_id}.json", "w") as f:
       f.write(session_info_str)
     logger.success(f"Session {tracker.session_id} saved successfully.")
@@ -74,11 +74,19 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
 
   motd = shell.get_motd()
   channel.send(motd.encode("utf-8"))
-  prompt = shell.get_prompt().encode("utf-8")
-  channel.send(prompt)
+  prompt = shell.get_prompt()
+  channel.send(prompt.encode("utf-8"))
+
+  command_history: list[str] = []
+  command_pointer = 0
   
   command_buffer = ""
   backspace_count = 0
+
+  def redraw_input_line(previous_buffer: str, new_buffer: str):
+    clear_padding = " " * max(0, len(previous_buffer) - len(new_buffer))
+    rendered_line = f"\r{prompt}{new_buffer}{clear_padding}\r{prompt}{new_buffer}"
+    channel.send(rendered_line.encode("utf-8"))
 
   while True:
     try:
@@ -87,13 +95,14 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
         logger.warning("Client disconnected")
         break
 
-      channel.send(char.encode("utf-8"))
-
       if char in ("\r", "\n"):
         # handle command execution
         channel.send(b"\r\n")
         full_command = command_buffer.strip()
 
+        if full_command:
+          command_history.append(full_command)
+        command_pointer = len(command_history)
         tracker.add_interaction(full_command, backspace_count)
         backspace_count = 0
         logger.info(f"Command captured: {full_command}")
@@ -108,16 +117,21 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
             except Exception as e:
               pass
             finally:
-              save_thread = threading.Thread(target=save_session_data, args=(tracker,))
+              save_thread = threading.Thread(target=save_session_data, args=(tracker, "User requested logout"))
               save_thread.start()
             break
 
-          response = shell.execute_command(full_command)
+          try:
+            response = shell.execute_command(full_command)
+          except ShellTerminationError as termination:
+            if termination.output:
+              channel.send(termination.output.encode("utf-8"))
+            raise
           channel.send(response.encode("utf-8"))
         
         command_buffer = ""
-        prompt = shell.get_prompt().encode("utf-8")
-        channel.send(prompt)
+        prompt = shell.get_prompt()
+        channel.send(prompt.encode("utf-8"))
       
       elif char in ("\b", "\x7f"):
         # Handle backspace
@@ -125,8 +139,45 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
           command_buffer = command_buffer[:-1]
           channel.send(b"\b \b")
           backspace_count += 1
+      elif char == "\x1b":
+        # Handle escape sequences (e.g., arrow keys)
+        try:
+          seq = channel.recv(2)
+          if seq == b"[A":
+            # Up arrow
+            if command_history and command_pointer > 0:
+              previous_buffer = command_buffer
+              command_pointer -= 1
+              command_buffer = command_history[command_pointer]
+              redraw_input_line(previous_buffer, command_buffer)
+          elif seq == b"[B":
+            # Down arrow
+            if command_history and command_pointer < len(command_history) - 1:
+              previous_buffer = command_buffer
+              command_pointer += 1
+              command_buffer = command_history[command_pointer]
+              redraw_input_line(previous_buffer, command_buffer)
+            elif command_pointer == len(command_history) - 1:
+              previous_buffer = command_buffer
+              command_pointer = len(command_history)
+              command_buffer = ""
+              redraw_input_line(previous_buffer, command_buffer)
+        except Exception:
+          pass
       else:
         command_buffer += char
+        channel.send(char.encode("utf-8"))
+    except ShellTerminationError as termination:
+      logger.warning(f"Session terminated by shell command: {termination.exit_reason}")
+      try:
+        if not channel.closed:
+          channel.close()
+      except Exception:
+        pass
+      finally:
+        save_thread = threading.Thread(target=save_session_data, args=(tracker, termination.exit_reason))
+        save_thread.start()
+      break
     except Exception as e:
       logger.error(f"Session error: {e}")
       save_thread = threading.Thread(target=save_session_data, args=(tracker,))

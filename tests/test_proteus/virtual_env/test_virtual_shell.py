@@ -1,6 +1,6 @@
 import pytest
 from src.proteus.virtual_env.vfs import VirtualFileSystem, FSDirectory, FSFile
-from src.proteus.virtual_env.virtual_shell import VirtualShell
+from src.proteus.virtual_env.virtual_shell import ShellTerminationError, VirtualShell
 
 @pytest.fixture
 def vfs_and_shell():
@@ -495,3 +495,35 @@ def test_ping_returns_ping_output(vfs_and_shell):
   assert "bytes from 8.8.8.8" in output
   assert "icmp_seq=1" in output
   assert "packet loss" in output
+
+# traceroute tests
+
+
+
+# clear tests
+
+def test_clear_clears_screen(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("clear")
+  
+  assert output == "\033[H\033[2J"  # ANSI escape code for clearing the screen
+
+# shutdown tests
+
+@pytest.mark.parametrize(
+  "command, expected_reason, expected_message",
+  [
+    ("shutdown now", "System shutdown requested", "The system is going down for power off NOW!"),
+    ("poweroff", "System power off requested", "The system is going down for power off NOW!"),
+    ("reboot", "System reboot requested", "The system is going down for reboot NOW!"),
+    ("/sbin/reboot", "System reboot requested", "The system is going down for reboot NOW!"),
+  ],
+)
+def test_termination_commands_disconnect(command, expected_reason, expected_message, vfs_and_shell):
+  _, shell = vfs_and_shell
+
+  with pytest.raises(ShellTerminationError) as excinfo:
+    shell.execute_command(command)
+
+  assert expected_reason == excinfo.value.exit_reason
+  assert expected_message in excinfo.value.output

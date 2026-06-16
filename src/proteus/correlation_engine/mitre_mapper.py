@@ -96,7 +96,7 @@ class MitreMapper:
         logger.error("Unexpected response from OpenAI: No content received in the response.")
         return []
       raw_output = raw_output.strip()
-      logger.debug(f"Raw output from command history evaluation:\n{raw_output}")
+      # logger.debug(f"Raw output from command history evaluation:\n{raw_output}")
 
       return self.parse_llm_phrases(raw_output)
     except Exception as e:
@@ -132,7 +132,7 @@ class MitreMapper:
     try:
       self.command_history.append(command)
       cti_phases = self.generate_attack_phases(self.command_history)
-      logger.debug(f"Generated CTI phases: {cti_phases}")
+      # logger.debug(f"Generated CTI phases: {cti_phases}")
       
       if not cti_phases:
         return None
@@ -154,7 +154,7 @@ class MitreMapper:
         top_confidence = probabilities[0][top_index]
 
         if top_confidence < CONFIDENCE_THRESHOLD:
-          logger.warning(f"Low confidence ({top_confidence:.3f}) for command '{command}' with predicted technique '{top_label}'. Skipping MITRE mapping.")
+          # logger.warning(f"Low confidence ({top_confidence:.3f}) for command '{command}' with predicted technique '{top_label}'. Skipping MITRE mapping.")
           continue
 
         mitre_mapping = MitreMapping(
