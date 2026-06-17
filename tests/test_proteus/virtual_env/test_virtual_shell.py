@@ -527,3 +527,15 @@ def test_termination_commands_disconnect(command, expected_reason, expected_mess
 
   assert expected_reason == excinfo.value.exit_reason
   assert expected_message in excinfo.value.output
+
+# env tests
+
+def test_env_returns_environment_variables(vfs_and_shell):
+  _, shell = vfs_and_shell
+  output = shell.execute_command("env")
+  
+  assert "PATH=" in output
+  assert "HOME=" in output
+  assert "USER=" in output
+  assert "SHELL=" in output
+

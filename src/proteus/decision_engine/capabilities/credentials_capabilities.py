@@ -5,6 +5,10 @@ from src.proteus.decision_engine.capabilities.utils import Capability, Capabilit
 class WeakenPasswordPolicyCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {}
   
   def execute(self) -> CapabilityResult:
     login_defs_path = "/etc/login.defs"
@@ -28,6 +32,12 @@ class WeakenPasswordPolicyCapability(Capability):
 class CreateFakeAWSCredentialsCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "user": "Username that should own the fake AWS credentials directory.",
+    }
   
   def execute(self) -> CapabilityResult:
     user = getattr(self.options, "user", None)

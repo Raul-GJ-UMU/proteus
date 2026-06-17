@@ -12,7 +12,13 @@ class Capability:
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     self.vfs = vfs
     self.virtual_shell = virtual_shell
+    self.current_user = virtual_shell.current_user
+    self.current_tty = virtual_shell.current_tty
     self.options = options
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {}
   
   def execute(self) -> CapabilityResult:
     return CapabilityResult(

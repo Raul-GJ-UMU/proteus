@@ -163,6 +163,13 @@ class VirtualFileSystem:
     # If the file is not found in either location, raise FileNotFound
     raise FileNotFound(virtual_path)
   
+  def listdir(self, virtual_path: str) -> list[str]:
+    node = self.get_node(virtual_path)
+    if node and isinstance(node, FSDirectory):
+      return list(node.children.keys())
+    else:
+      raise FileNotFound(virtual_path)
+  
   def override_file_contents(self, virtual_path: str, new_content: bytes):
     node = self.get_node(virtual_path)
     if node and isinstance(node, FSFile):

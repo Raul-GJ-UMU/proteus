@@ -5,6 +5,13 @@ from src.proteus.decision_engine.capabilities.utils import Capability, Capabilit
 class CreateFileCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "file_path": "Path of the file to create.",
+      "file_content": "Initial content that should be written to the file.",
+    }
   
   def execute(self) -> CapabilityResult:
     file_path = getattr(self.options, "file_path", None)
@@ -45,6 +52,12 @@ class CreateFileCapability(Capability):
 class DeleteFileCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "file_path": "Path of the file to delete.",
+    }
   
   def execute(self) -> CapabilityResult:
     file_path = getattr(self.options, "file_path", None)
@@ -76,6 +89,13 @@ class DeleteFileCapability(Capability):
 class ModifyFileContentCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "file_path": "Path of the file whose content should be modified.",
+      "new_content": "Replacement content for the file.",
+    }
   
   def execute(self) -> CapabilityResult:
     file_path = getattr(self.options, "file_path", None)
@@ -115,6 +135,13 @@ class ModifyFileContentCapability(Capability):
 class ModifyFileMetadataCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "file_path": "Path of the file whose metadata should be modified.",
+      "new_metadata": "Dictionary of metadata values to apply, such as mode, uid, and gid.",
+    }
   
   def execute(self) -> CapabilityResult:
     file_path = getattr(self.options, "file_path", None)

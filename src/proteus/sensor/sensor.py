@@ -121,6 +121,12 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
               save_thread.start()
             break
 
+          elif full_command.lower() == "history":
+            result = ""
+            for idx, cmd in enumerate(command_history, start=1):
+              result += f"{idx}: {cmd}\r\n"
+            channel.send(result.encode("utf-8"))
+
           try:
             response = shell.execute_command(full_command)
           except ShellTerminationError as termination:

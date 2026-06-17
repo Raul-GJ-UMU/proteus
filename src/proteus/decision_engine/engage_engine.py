@@ -1,5 +1,6 @@
 import random
 import json
+import ast
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,6 @@ from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell, ProcessData
 from src.proteus.decision_engine.engage_parser import EngageParser
 from src.proteus.decision_engine.engage_mapping import EngageDetails
-from src.proteus.decision_engine.deception_capabilities import DeceptionCapabilites
 from src.proteus.decision_engine.capabilities.account_capabilities import CreateFakeUserAccountCapability
 from src.proteus.decision_engine.capabilities.credentials_capabilities import (
   CreateFakeAWSCredentialsCapability,
@@ -40,7 +40,6 @@ class EngageEngine:
     self.llm_client = llm_client
     self.llm_model = llm_model
     self.engage_parser = EngageParser()
-    self.deception_capabilities = DeceptionCapabilites()
     self.deployed_capabilities = set()
     self.capabilities_mapping = self.load_capabilities_mapping(capabilities_mapping_url)
   
@@ -82,7 +81,7 @@ class EngageEngine:
 
     return mapping
 
-  def evaluate_and_react(self, engage_details: list[EngageDetails]) -> None:
+  def evaluate_and_react(self, command: str, description: str, engage_details: list[EngageDetails]) -> None:
     valid_capabilities: list[str] = []
     for detail in engage_details:
       activity = detail.activity.activity_id
@@ -94,12 +93,10 @@ class EngageEngine:
       logger.info("No new deception capabilities to deploy for this technique.")
       return
     selected_capability = random.choice(valid_capabilities)
-    self.execute_deception(selected_capability)
+    self.execute_deception(selected_capability, command, description)
   
-  def execute_deception(self, capability_name: str) -> None:
+  def execute_deception(self, capability_name: str, command: str, description: str) -> None:
     capability_key = capability_name.strip().lower()
-    capability_options = self._build_capability_options(capability_key)
-
     capability_registry = {
       "create_fake_user_account": CreateFakeUserAccountCapability,
       "create_fake_user_account_capability": CreateFakeUserAccountCapability,
@@ -126,6 +123,13 @@ class EngageEngine:
       logger.warning(f"Unsupported deception capability '{capability_name}'.")
       return
 
+    capability_options = self._build_capability_options(
+      capability_key, 
+      capability_class, 
+      command, 
+      description
+    )
+
     capability = capability_class(self.vfs, self.virtual_shell, capability_options)
     result = capability.execute()
 
@@ -139,59 +143,141 @@ class EngageEngine:
         f"Capability '{capability_name}' failed ({result.eac_id}/{result.function_name}): {result.message}"
       )
 
-  def _build_capability_options(self, capability_name: str) -> object:
-    default_process = ProcessData(
-      user=self.virtual_shell.current_user,
-      pid=1000,
-      cpu_usage=0.0,
-      memory_usage=0.0,
-      vsz=0,
-      rss=0,
-      tty=self.virtual_shell.current_tty,
-      stat="S",
-      start_time="00:00",
-      time="0:00",
-      command="example_process",
-    )
-    default_connection = (
-      self.virtual_shell.network_connections[0].model_dump()
-      if self.virtual_shell.network_connections
-      else {
-        "protocol": "TCP",
-        "local_address": "127.0.0.1:0",
-        "remote_address": "127.0.0.1:0",
-        "state": "ESTABLISHED",
-      }
-    )
-
-    if capability_name in {"create_fake_user_account", "create_fake_user_account_capability"}:
-      return SimpleNamespace(username="user")
-
-    if capability_name in {"create_fake_aws_credentials", "create_fake_aws_credentials_capability"}:
-      return SimpleNamespace(user="user")
-
-    if capability_name in {"create_file", "create_file_capability"}:
-      return SimpleNamespace(file_path="/tmp/user.txt", file_content="user content")
-
-    if capability_name in {"delete_file", "delete_file_capability"}:
-      return SimpleNamespace(file_path="/tmp/user.txt")
-
-    if capability_name in {"modify_file_content", "modify_file_content_capability"}:
-      return SimpleNamespace(file_path="/tmp/user.txt", new_content="updated user content")
-
-    if capability_name in {"modify_file_metadata", "modify_file_metadata_capability"}:
-      return SimpleNamespace(
-        file_path="/tmp/user.txt",
-        new_metadata={"mode": "rw-r--r--", "uid": 0, "gid": 0},
-      )
-
-    if capability_name in {"inject_fake_process", "inject_fake_process_capability"}:
-      return SimpleNamespace(process_data=default_process)
-
-    if capability_name in {"inject_fake_network_connection", "inject_fake_network_connection_capability"}:
-      return SimpleNamespace(network_data=default_connection)
-
-    if capability_name in {"weaken_password_policy", "weaken_password_policy_capability"}:
+  def _build_capability_options(
+      self, 
+      capability_name: str, 
+      capability_class, 
+      command: str, 
+      description: str
+    ) -> object:
+    option_fields = capability_class.option_fields()
+    if not option_fields:
       return SimpleNamespace()
 
-    return SimpleNamespace()
+    if not self.llm_client or not self.llm_model:
+      logger.warning(
+        f"LLM client or model not configured. Cannot generate options for capability '{capability_name}'."
+      )
+      return SimpleNamespace()
+
+    field_description_text = "\n".join(
+      f"- {field}: {description}" for field, description in option_fields.items()
+    )
+
+    system_prompt = (
+      "You are an expert system administrator AI generating configuration data "
+      "for a highly realistic Ubuntu 22.04 production server. Your output MUST be "
+      "strictly valid JSON. DO NOT wrap the output in Markdown blocks.\n"
+      "CRITICAL RULES:\n"
+      "1. NEVER use words like 'honeypot', 'fake', 'decoy', 'trap', 'test', or 'malware'.\n"
+      "2. Data must look indistinguishable from a legitimate corporate server environment.\n"
+      "3. ONLY output the exact fields requested. DO NOT hallucinate or add extra fields.\n"
+      "4. DO NOT wrap the fields inside objects like command, arguments, options, payload, or data."
+    )
+    user_prompt = (
+      f"Command executed: {command}\n"
+      f"Context: '{description}'\n"
+      f"Task: Generate configuration data for the system component: '{capability_name}'.\n"
+      f"Required Fields and their descriptions:\n{field_description_text}\n\n"
+      "INSTRUCTIONS:\n"
+      "Fill all required fields with highly convincing, mundane values typical of a busy Linux server. "
+      "For example, use names related to common web servers (nginx/apache), databases (mysql/postgres), "
+      "or background system services (systemd, cron, sshd). "
+      "Return ONLY a raw JSON object."
+    )
+
+    logger.debug(f"Requesting options from LLM for capability '{capability_name}': {user_prompt}")
+
+    try:
+      response = self.llm_client.chat.completions.create(
+        model=self.llm_model,
+        messages=[
+          {"role": "system", "content": system_prompt},
+          {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=400,
+      )
+    except Exception as exc:
+      logger.error(f"Error requesting options from LLM for '{capability_name}': {exc}")
+      return SimpleNamespace()
+
+    raw_output = response.choices[0].message.content if response.choices else None
+    if not raw_output:
+      logger.warning(f"LLM returned no content for capability '{capability_name}'.")
+      return SimpleNamespace()
+
+    payload = self._parse_options_payload(raw_output)
+    if not isinstance(payload, dict):
+      logger.warning(f"LLM returned invalid options for capability '{capability_name}': {raw_output}")
+      return SimpleNamespace()
+
+    payload = self._coerce_capability_payload(capability_name, payload, option_fields)
+    result = SimpleNamespace(**payload)
+    logger.info(f"Generated options for capability '{capability_name}': {payload}")
+    return result
+
+  def _parse_options_payload(self, raw_output: str) -> object:
+    text = raw_output.strip()
+    if text.startswith("```"):
+      text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+      text = re.sub(r"\s*```$", "", text)
+
+    try:
+      return json.loads(text)
+    except json.JSONDecodeError:
+      match = re.search(r"\{.*\}", text, re.DOTALL)
+      if match:
+        candidate = match.group(0)
+        try:
+          return json.loads(candidate)
+        except json.JSONDecodeError:
+          try:
+            return ast.literal_eval(candidate)
+          except (ValueError, SyntaxError):
+            return None
+
+      try:
+        return ast.literal_eval(text)
+      except (ValueError, SyntaxError):
+        return None
+
+  def _coerce_capability_payload(self, capability_name: str, payload: dict, option_fields: dict[str, str]) -> dict:
+    payload = self._unwrap_capability_payload(payload, set(option_fields.keys()))
+
+    if len(payload) == 1 and capability_name in payload:
+        payload = payload[capability_name]
+    if capability_name in {"inject_fake_process", "inject_fake_process_capability"}:
+      process_data = payload.get("process_data")
+      if isinstance(process_data, dict):
+        payload["process_data"] = ProcessData(**process_data)
+
+    if capability_name in {"inject_fake_network_connection", "inject_fake_network_connection_capability"}:
+      network_data = payload.get("network_data")
+      if isinstance(network_data, dict):
+        payload["network_data"] = network_data
+
+    return payload
+
+  def _unwrap_capability_payload(self, payload: object, required_fields: set[str]) -> dict:
+    if not isinstance(payload, dict):
+      return {}
+
+    if required_fields and required_fields.issubset(payload.keys()):
+      return payload
+
+    wrapper_keys = ("arguments", "args", "options", "payload", "data", "fields", "command")
+    for key in wrapper_keys:
+      nested = payload.get(key)
+      if isinstance(nested, dict):
+        candidate = self._unwrap_capability_payload(nested, required_fields)
+        if required_fields.issubset(candidate.keys()):
+          return candidate
+
+    for value in payload.values():
+      if isinstance(value, dict):
+        candidate = self._unwrap_capability_payload(value, required_fields)
+        if required_fields.issubset(candidate.keys()):
+          return candidate
+
+    return payload

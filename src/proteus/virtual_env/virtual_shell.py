@@ -129,7 +129,19 @@ class VirtualShell:
       "tail": self.do_tail,
       "wc": self.do_wc,
       "ping": self.do_ping,
-      "clear": self.do_clear
+      "clear": self.do_clear,
+      "env": self.do_env
+    }
+
+    self.environ = {
+      "USER": self.current_user,
+      "HOME": f"/{self.current_user}",
+      "SHELL": "/bin/bash",
+      "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PWD": self.vfs.cwd_path,
+      "TERM": "xterm-256color",
+      "LANG": "en_US.UTF-8",
+      "LOGNAME": self.current_user,
     }
 
     self.cowrie_registry = {}
@@ -746,3 +758,7 @@ class VirtualShell:
   
   def do_clear(self, args: list):
     return "\033[H\033[J"
+  
+  def do_env(self, args: list):
+    output_lines = [f"{key}={value}" for key, value in self.environ.items()]
+    return "\n".join(output_lines) + "\n"

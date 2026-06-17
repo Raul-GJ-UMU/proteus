@@ -7,6 +7,8 @@ from .models import MitreMapping, NetworkInfo, Session, SessionInfo, Authenticat
 import threading
 from loguru import logger
 
+ENGAGE_CONFIDENCE_THRESHOLD = 0.1
+
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
 
 class SessionTracker:
@@ -71,9 +73,9 @@ class SessionTracker:
           logger.info(f"MITRE mapping for command '{command}': {mitre_result}")
           self.mitre_mapping = mitre_result
           for mitre_mapping in mitre_result:
-            if mitre_mapping.confidence >= 0.5:
+            if mitre_mapping.confidence >= ENGAGE_CONFIDENCE_THRESHOLD:
               engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_mapping.technique_id)
-              self.decision_engine.evaluate_and_react(engage_details)
+              self.decision_engine.evaluate_and_react(command, mitre_mapping.cti_sentence, engage_details)
       except Exception as e:
         logger.error(f"Error during background analysis for command '{command}': {e}")
     

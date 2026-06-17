@@ -5,6 +5,12 @@ from src.proteus.decision_engine.capabilities.utils import Capability, Capabilit
 class CreateFakeUserAccountCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "username": "Username for the fake account to create.",
+    }
   
   def execute(self) -> CapabilityResult:
     account_name = getattr(self.options, "username", None)

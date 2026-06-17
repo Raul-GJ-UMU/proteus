@@ -5,6 +5,12 @@ from src.proteus.decision_engine.capabilities.utils import Capability, Capabilit
 class InjectFakeNetworkConnectionCapability(Capability):
   def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
     super().__init__(vfs, virtual_shell, options)
+
+  @classmethod
+  def option_fields(cls) -> dict[str, str]:
+    return {
+      "network_data": "Dictionary with protocol, local_address, remote_address, and state for the fake connection.",
+    }
   
   def execute(self) -> CapabilityResult:
     network_data = getattr(self.options, "network_data", None)
