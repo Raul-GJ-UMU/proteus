@@ -51,7 +51,7 @@ class VirtualFileSystem:
       logger.error(f"Filesystem JSON file not found: {json_path}")
       return
 
-    logger.info(f"Loading filesystem from {json_path}...")
+    # logger.info(f"Loading filesystem from {json_path}...")
     with open(json_path, 'r', encoding='utf-8') as f:
       data = json.load(f)
     self.root = self._parse_node(data) # type: ignore

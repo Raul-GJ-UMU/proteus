@@ -12,7 +12,6 @@ def main():
   logger.info("======================================")
   
   try:
-    logger.info("Initializing SSH sensor...")
     start_sensor(host="0.0.0.0", port=2222)
   
   except KeyboardInterrupt:

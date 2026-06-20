@@ -56,7 +56,7 @@ class EngageEngine:
         logger.warning(f"Capabilities mapping file not found at {capabilities_mapping_url}")
         return {}
 
-    logger.info(f"Loading capabilities mapping from {url}...")
+    # logger.info(f"Loading capabilities mapping from {url}...")
     with url.open("r", encoding="utf-8") as cache_file:
       raw = json.load(cache_file)
 

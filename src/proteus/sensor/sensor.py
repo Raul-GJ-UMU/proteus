@@ -26,10 +26,10 @@ RSA_KEY_PATH = os.getenv("PROTEUS_RSA_KEY_FILE")
 def get_or_generate_rsa_key(path: str) -> paramiko.RSAKey:
   os.makedirs(os.path.dirname(path), exist_ok=True)
   if os.path.exists(path):
-    logger.info(f"Loading RSA key from {path}")
+    # logger.info(f"Loading RSA key from {path}")
     return paramiko.RSAKey(filename=path)
   else:
-    logger.info(f"Generating new RSA key on {path}")
+    # logger.info(f"Generating new RSA key on {path}")
     key = paramiko.RSAKey.generate(2048)
     key.write_private_key_file(path)
     return key
@@ -70,7 +70,7 @@ def save_session_data(tracker: SessionTracker, exit_reason: str = "User requeste
     logger.error(f"Error saving the final session: {e}")
 
 def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTracker, shell: VirtualShell):
-  logger.success("SSH session established")
+  # logger.success("SSH session established")
 
   motd = shell.get_motd()
   channel.send(motd.encode("utf-8"))
@@ -100,8 +100,10 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
         channel.send(b"\r\n")
         full_command = command_buffer.strip()
 
-        if full_command:
-          command_history.append(full_command)
+        if not full_command:
+          continue
+
+        command_history.append(full_command)
         command_pointer = len(command_history)
         tracker.add_interaction(full_command, backspace_count)
         backspace_count = 0
@@ -258,10 +260,9 @@ def start_sensor(host="0.0.0.0", port=2222):
         continue
       
       client_version = transport.remote_version
-      logger.info(f"SSH client version: {client_version}")
       tracker.add_ssh_client(client_version)
 
-      channel = transport.accept(20)
+      channel = transport.accept(60)
       if channel is None:
         logger.error("The client did not open a channel")
         continue

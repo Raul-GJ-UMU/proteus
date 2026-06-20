@@ -148,7 +148,7 @@ class VirtualShell:
     self.load_cowrie_commands()
   
   def load_cowrie_commands(self):
-    logger.info("Scanning for Cowrie command modules...")
+    # logger.info("Scanning for Cowrie command modules...")
     try:
       import src.proteus.virtual_env.commands as cowrie_cmds_pkg
       
@@ -165,7 +165,7 @@ class VirtualShell:
         except Exception as e:
           logger.error(f"Error loading module '{module_name}': {e}")
               
-      logger.success(f"{len(self.cowrie_registry)} cowrie commands loaded successfully.")
+      # logger.success(f"{len(self.cowrie_registry)} cowrie commands loaded successfully.")
       print(f"Loaded Cowrie commands: {', '.join(self.cowrie_registry.keys())}")
     except Exception as e:
       logger.error(f"Fatal error initializing Cowrie registry: {e}")

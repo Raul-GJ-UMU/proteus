@@ -68,14 +68,12 @@ class TestTelemetryTracker:
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_and_export(self, mock_evaluate_command):
-    mock_evaluate_command.return_value = [
-      MitreMapping(
-        command_indexes="1",
-        technique_id="T9999",
-        confidence=0.99,
-        cti_sentence="This is a fast mock sentence for testing."
-      )
-    ]
+    mock_evaluate_command.return_value = MitreMapping(
+      command_indexes="1",
+      technique_id="T9999",
+      confidence=0.99,
+      cti_sentence="This is a fast mock sentence for testing."
+    )
 
     tracker = SessionTracker(session_id, source_ip, source_port, client_version)
     tracker.add_authentication("root", "password")
@@ -87,7 +85,11 @@ class TestTelemetryTracker:
 
     assert isinstance(session_json, str)
 
-    mock_evaluate_command.assert_called_with("whoami")
+    mock_evaluate_command.assert_called_once()
+    called_args, _ = mock_evaluate_command.call_args
+    assert called_args[0] == "whoami"
+    assert len(called_args[1]) == 1
+    assert called_args[1][0].command == "whoami"
         
     assert "technique_id" in session_json
     assert "confidence" in session_json

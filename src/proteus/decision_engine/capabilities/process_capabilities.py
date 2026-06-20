@@ -9,7 +9,16 @@ class InjectFakeProcessCapability(Capability):
   @classmethod
   def option_fields(cls) -> dict[str, str]:
     return {
-      "process_data": "Dictionary with pid, cpu_usage, memory_usage, vsz, rss, stat, start_time, time, and command.",
+      "process_data": "Dictionary with the following fields: \n"
+      "- pid: Process ID (integer)\n"
+      "- cpu_usage: CPU usage percentage (float)\n"
+      "- memory_usage: Memory usage percentage (float)\n"
+      "- vsz: Virtual memory size (integer)\n"
+      "- rss: Resident set size (integer)\n"
+      "- stat: Process state (string)\n"
+      "- start_time: Start time of the process (string)\n"
+      "- time: CPU time consumed by the process (string)\n"
+      "- command: Command executed by the process (string)",
     }
   
   def execute(self) -> CapabilityResult:
@@ -20,6 +29,33 @@ class InjectFakeProcessCapability(Capability):
         eac_id="EAC0014", 
         function_name="spoof_discovery_output", 
         message="Process data is required to inject a fake process."
+      )
+    pid, cpu_usage, memory_usage, vsz, rss, stat, start_time, time, command = (
+      options.get("pid", 0),
+      options.get("cpu_usage", 0.0),
+      options.get("memory_usage", 0.0),
+      options.get("vsz", 0),
+      options.get("rss", 0),
+      options.get("stat", ""),
+      options.get("start_time", ""),
+      options.get("time", ""),
+      options.get("command", "")
+    )
+    if (not isinstance(pid, int) or 
+        not isinstance(cpu_usage, (int, float)) or 
+        not isinstance(memory_usage, (int, float)) or 
+        not isinstance(vsz, int) or 
+        not isinstance(rss, int) or 
+        not isinstance(stat, str) or 
+        not isinstance(start_time, str) or 
+        not isinstance(time, str) or 
+        not isinstance(command, str)
+    ):
+      return CapabilityResult(
+        success=False, 
+        eac_id="EAC0014",
+        function_name="spoof_discovery_output",
+        message="Invalid data types in process_data. Expected types: pid (int), cpu_usage (float), memory_usage (float), vsz (int), rss (int), stat (str), start_time (str), time (str), command (str)."
       )
     process_data = ProcessData(
       user=self.virtual_shell.current_user,

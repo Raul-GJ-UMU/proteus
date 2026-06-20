@@ -9,7 +9,11 @@ class InjectFakeNetworkConnectionCapability(Capability):
   @classmethod
   def option_fields(cls) -> dict[str, str]:
     return {
-      "network_data": "Dictionary with protocol, local_address, remote_address, and state for the fake connection.",
+      "network_data": "Dictionary with the following fields: \n"
+      "- protocol: Network protocol (string)\n"
+      "- local_address: Local IP address and port (string)\n"
+      "- remote_address: Remote IP address and port (string)\n"
+      "- state: Connection state (string)",
     }
   
   def execute(self) -> CapabilityResult:
