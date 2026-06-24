@@ -240,7 +240,7 @@ def start_sensor(host="0.0.0.0", port=2222):
 
       engage_parser = EngageParser()
 
-      decision_engine = EngageEngine(
+      engage_engine = EngageEngine(
         vfs=global_vfs,
         virtual_shell=shell,
         llm_client=llm_client,
@@ -249,7 +249,7 @@ def start_sensor(host="0.0.0.0", port=2222):
 
       transport = paramiko.Transport(client)
       transport.add_server_key(host_key)
-      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, llm_model, engage_parser, decision_engine)
+      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, llm_model, engage_parser, engage_engine)
 
       server = Sensor(tracker)
 

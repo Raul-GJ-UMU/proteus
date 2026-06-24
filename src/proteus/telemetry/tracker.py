@@ -24,7 +24,7 @@ class SessionTracker:
     llm_client,
     llm_model,
     engage_parser: EngageParser,
-    decision_engine: EngageEngine
+    engage_engine: EngageEngine
   ):
     self.session_id = session_id
     self.start_time = datetime.now(timezone.utc)
@@ -41,7 +41,7 @@ class SessionTracker:
     self.mitre_mapping: list[MitreMapping] = []
     self.analysis_threads: list[threading.Thread] = []
     self.engage_parser = engage_parser
-    self.decision_engine = decision_engine
+    self.engage_engine = engage_engine
     self.attack_data = self._load_attack_data()
 
   def _load_attack_data(self) -> dict[str, str]:
@@ -112,9 +112,14 @@ class SessionTracker:
           self.interactions[-1].mitre_mapping = mitre_result
           if mitre_result.confidence >= ENGAGE_CONFIDENCE_THRESHOLD:
             engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_result.technique_id)
+            engage_ids = list[str]()
+            for detail in engage_details:
+              engage_ids.append(detail.activity.activity_id)
+            engage_ids_set = set(engage_ids)
+            logger.info(f"Engage activities for command '{command}': {engage_ids_set}")
             description = self.attack_data.get(mitre_result.technique_id, "No description available.")
             try:
-              self.decision_engine.evaluate_and_react(command, description, engage_details)
+              self.engage_engine.evaluate_and_react(command, description, engage_details)
             except ValidationError as e:
               logger.error(f"Error validating fields for command '{command}': {e}")
       except Exception as e:

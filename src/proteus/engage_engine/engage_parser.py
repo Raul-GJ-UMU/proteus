@@ -4,12 +4,12 @@ from typing import Any
 import json
 from pathlib import Path
 
-from src.proteus.decision_engine.engage_mapping import TechniqueMapping, EngageDetails, EngageGoal, EngageApproach, EngageActivity, EngageVulnerability
+from src.proteus.engage_engine.engage_mapping import TechniqueMapping, EngageDetails, EngageGoal, EngageApproach, EngageActivity, EngageVulnerability
 
 logger.add("logs/proteus_engage_engine.log", rotation="10 MB")
 
 class EngageParser:
-  def __init__(self, engage_data_file: str = "src/proteus/decision_engine/Engage-Data-V1.0.xlsx", cache_path: str | None = None):
+  def __init__(self, engage_data_file: str = "src/proteus/engage_engine/Engage-Data-V1.0.xlsx", cache_path: str | None = None):
     self.engage_data_file = engage_data_file
     self.cache_path = Path(cache_path or Path(engage_data_file).with_name("engage_mapping_cache.json"))
     self.mapper = self.build_engage_mapping(engage_data_file)

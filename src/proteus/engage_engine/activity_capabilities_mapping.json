@@ -158,10 +158,6 @@
     "summary": "Create fictitious human user(s) through a combination of planted data and revealed behavior patterns.",
     "capabilities": [
       {
-        "name": "SimulateActiveUserCapability", 
-        "ponderation": 0.5
-      },
-      {
         "name": "GenerateUserDotFilesCapability",
         "ponderation": 0.4
       },

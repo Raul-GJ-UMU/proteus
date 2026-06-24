@@ -4,24 +4,14 @@ import ast
 import re
 from pathlib import Path
 from types import SimpleNamespace
+import importlib
+import inspect
+import pkgutil
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell, ProcessData
 from src.proteus.engage_engine.engage_parser import EngageParser
 from src.proteus.engage_engine.engage_mapping import EngageDetails
-from src.proteus.engage_engine.capabilities.account_capabilities import CreateFakeUserAccountCapability
-from src.proteus.engage_engine.capabilities.credentials_capabilities import (
-  CreateFakeAWSCredentialsCapability,
-  WeakenPasswordPolicyCapability,
-)
-from src.proteus.engage_engine.capabilities.file_capabilities import (
-  CreateFileCapability,
-  DeleteFileCapability,
-  ModifyFileContentCapability,
-  ModifyFileMetadataCapability,
-)
-from src.proteus.engage_engine.capabilities.network_capabilites import InjectFakeNetworkConnectionCapability
-from src.proteus.engage_engine.capabilities.process_capabilities import InjectFakeProcessCapability
 
 from loguru import logger
 
@@ -34,16 +24,43 @@ class EngageEngine:
       virtual_shell: VirtualShell,
       llm_client, 
       llm_model,
-      capabilities_mapping_url: str = "/src/proteus/decision_engine/capabilities_mapping.json",):
+      capabilities_mapping_url: str = "/src/proteus/engage_engine/activity_capabilities_mapping.json",):
     self.vfs = vfs
     self.virtual_shell = virtual_shell
     self.llm_client = llm_client
     self.llm_model = llm_model
     self.engage_parser = EngageParser()
     self.deployed_capabilities = set()
-    self.capabilities_mapping = self.load_capabilities_mapping(capabilities_mapping_url)
+    self.capabilities_registry = self.discover_capabilities("src.proteus.engage_engine.capabilities")
+    self.activity_capabilities_mapping = self.load_activity_capabilities_mapping(capabilities_mapping_url)
   
-  def load_capabilities_mapping(self, capabilities_mapping_url: str) -> dict[str, list[str]]:
+  def discover_capabilities(self, package_name: str) -> dict[str, type]:
+    capabilities: dict[str, type] = {}
+
+    try:
+      package = importlib.import_module(package_name)
+    except ImportError as e:
+      logger.error(f"Failed to import package '{package_name}': {e}")
+      return capabilities
+    
+    for _, module_name, is_pkg in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
+      if is_pkg:
+        continue
+
+      try:
+        module = importlib.import_module(module_name)
+
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+          if obj.__module__ == module_name:
+            if name.endswith("Capability") and hasattr(obj, 'execute') and name != "Capability":
+              capabilities[name] = obj
+      except ImportError as e:
+        logger.error(f"Failed to import module '{module_name}': {e}")
+    logger.info(f"Discovered capabilities: {capabilities}")
+    return capabilities
+      
+  
+  def load_activity_capabilities_mapping(self, capabilities_mapping_url: str) -> dict[str, list[str]]:
     url = Path(capabilities_mapping_url)
 
     # If provided path does not exist, try resolving relative to project root
@@ -61,70 +78,42 @@ class EngageEngine:
       raw = json.load(cache_file)
 
     mapping: dict[str, list[str]] = {}
-    for eac_id, capability_list in raw.items():
-      normalized: list[str] = []
-      for cls_name in capability_list:
-        if not isinstance(cls_name, str) or not cls_name:
-          continue
+    for eac_id, value in raw.items():
+      capabilities: list[str] = []
+      for capability in value.get("capabilities", []):
+        name = capability.get("name")
+        if name:
+          capabilities.append(name)
 
-        # Remove trailing 'Capability' if present
-        base = cls_name
-        if base.endswith("Capability"):
-          base = base[: -len("Capability")]
-
-        # Convert CamelCase/PascalCase to snake_case (e.g. CreateFakeUser -> create_fake_user)
-        s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", base)
-        snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
-        normalized.append(snake)
-
-      mapping[str(eac_id)] = normalized
+      mapping[str(eac_id)] = capabilities
 
     return mapping
 
   def evaluate_and_react(self, command: str, description: str, engage_details: list[EngageDetails]) -> None:
     valid_capabilities: list[str] = []
+
     for detail in engage_details:
       activity = detail.activity.activity_id
-      if not activity in self.capabilities_mapping:
-        continue
-      valid_capabilities.extend(self.capabilities_mapping[activity])
+      valid_capabilities.extend(self.activity_capabilities_mapping.get(activity, []))
+
+    # logger.info(f"Valid deception capabilities for this technique: {valid_capabilities}")
     valid_capabilities = list(set(valid_capabilities) - self.deployed_capabilities)
     if not valid_capabilities:
       logger.info("No new deception capabilities to deploy for this technique.")
       return
-    selected_capability = random.choice(valid_capabilities)
+    selected_capability = random.choice(valid_capabilities) # If a capability appears more than once, it's propability to be chosen increases
     self.execute_deception(selected_capability, command, description)
   
   def execute_deception(self, capability_name: str, command: str, description: str) -> None:
-    capability_key = capability_name.strip().lower()
-    capability_registry = {
-      "create_fake_user_account": CreateFakeUserAccountCapability,
-      "create_fake_user_account_capability": CreateFakeUserAccountCapability,
-      "create_fake_aws_credentials": CreateFakeAWSCredentialsCapability,
-      "create_fake_aws_credentials_capability": CreateFakeAWSCredentialsCapability,
-      "weaken_password_policy": WeakenPasswordPolicyCapability,
-      "weaken_password_policy_capability": WeakenPasswordPolicyCapability,
-      "create_file": CreateFileCapability,
-      "create_file_capability": CreateFileCapability,
-      "delete_file": DeleteFileCapability,
-      "delete_file_capability": DeleteFileCapability,
-      "modify_file_content": ModifyFileContentCapability,
-      "modify_file_content_capability": ModifyFileContentCapability,
-      "modify_file_metadata": ModifyFileMetadataCapability,
-      "modify_file_metadata_capability": ModifyFileMetadataCapability,
-      "inject_fake_process": InjectFakeProcessCapability,
-      "inject_fake_process_capability": InjectFakeProcessCapability,
-      "inject_fake_network_connection": InjectFakeNetworkConnectionCapability,
-      "inject_fake_network_connection_capability": InjectFakeNetworkConnectionCapability,
-    }
-
-    capability_class = capability_registry.get(capability_key)
+    logger.info(f"Capabilities registry: {self.capabilities_registry}")
+    capability_class = self.capabilities_registry.get(capability_name)
+    logger.info(f"Capability class for '{capability_name}': {capability_class}")
     if capability_class is None:
       logger.warning(f"Unsupported deception capability '{capability_name}'.")
       return
 
     capability_options = self._build_capability_options(
-      capability_key, 
+      capability_name, 
       capability_class, 
       command, 
       description
@@ -146,7 +135,7 @@ class EngageEngine:
   def _build_capability_options(
       self, 
       capability_name: str, 
-      capability_class, 
+      capability_class: type, 
       command: str, 
       description: str
     ) -> object:
