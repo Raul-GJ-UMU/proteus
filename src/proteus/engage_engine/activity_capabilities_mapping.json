@@ -275,7 +275,7 @@
         "ponderation": 0.25
       },
       {
-        "name": "CreateTemporalFileCapability",
+        "name": "GenerateTemporalFilesCapability",
         "ponderation": 0.2
       }
     ],

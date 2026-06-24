@@ -44,14 +44,14 @@ class CredibilityAnalyzer:
     prompt = self.pipeline.tokenizer.apply_chat_template(messages, tokenize = False, add_generation_prompt = True)
 
     outputs = self.pipeline(
-      prompt,
+      prompt, # type: ignore
       max_new_tokens=30,
       do_sample=False,
       temperature=0.0
     )
 
     generated_text = outputs[0]['generated_text'].split("<|assistant|>")[-1].strip()
-    logger.debug(f"Raw generated text: {generated_text}")
+    # logger.debug(f"Raw generated text: {generated_text}")
 
     try:
       match = re.search(r'"score":\s([0-9.]+)', generated_text)
