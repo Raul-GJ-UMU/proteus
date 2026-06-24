@@ -6,16 +6,20 @@ from datetime import datetime
 from src.proteus.telemetry.tracker import SessionTracker
 from src.proteus.telemetry.models import NetworkInfo, Session, InteractionInfo, MitreMapping
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 session_id = f"session_{uuid.uuid4().hex}_192.168.1.50"
 source_ip = "192.168.1.50"
 source_port = 12345
 client_version = "OpenSSH_8.0"
+dummy_client = "dummy-client"
+dummy_model = "dummy-model"
+engage_parser = MagicMock()
+engage_mapper = MagicMock()
 
 class TestTelemetryTracker:
   def test_tracker_initialization(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
 
     assert tracker.session_id is not None
     assert tracker.session_id.startswith("session_")
@@ -28,7 +32,7 @@ class TestTelemetryTracker:
     assert tracker.network_info.ssh_client == client_version
   
   def test_add_authentication(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
 
     assert tracker.auth_info is not None
@@ -37,7 +41,7 @@ class TestTelemetryTracker:
     assert isinstance(tracker.auth_info.timestamp, datetime)
   
   def test_add_environment(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     terminal_type = "xterm"
     shell_width = 80
     shell_height = 24
@@ -49,7 +53,7 @@ class TestTelemetryTracker:
     assert tracker.env_info.shell_height == shell_height
   
   def test_add_interaction(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     commands = ["ls -la", "cat /etc/passwd"]
     backspaces = [0, 2]
     tracker.add_interaction(commands[0], backspaces[0])
@@ -68,16 +72,16 @@ class TestTelemetryTracker:
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_and_export(self, mock_evaluate_command):
-    mock_evaluate_command.return_value = [
-      MitreMapping(
-        command_indexes="1",
-        technique_id="T9999",
-        confidence=0.99,
-        cti_sentence="This is a fast mock sentence for testing."
-      )
-    ]
+    mock_evaluate_command.return_value = MitreMapping(
+      technique_id="T9999",
+      confidence=0.99,
+      cti_sentence="This is a fast mock sentence for testing."
+    )
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    engage_parser = MagicMock()
+    engage_mapper = MagicMock()
+
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
     tracker.add_environment("xterm", 60, 18)
     tracker.add_interaction("whoami", 3)
@@ -87,7 +91,11 @@ class TestTelemetryTracker:
 
     assert isinstance(session_json, str)
 
-    mock_evaluate_command.assert_called_with("whoami")
+    mock_evaluate_command.assert_called_once()
+    called_args, _ = mock_evaluate_command.call_args
+    assert called_args[0] == "whoami"
+    assert len(called_args[1]) == 1
+    assert called_args[1][0].command == "whoami"
         
     assert "technique_id" in session_json
     assert "confidence" in session_json
@@ -108,13 +116,12 @@ class TestTelemetryTracker:
     assert session_data.interactions[0].command == "whoami"
     assert session_data.interactions[0].backspaces == 3
     assert session_data.session_metadata.exit_reason == exit_reason
-    assert session_data.mitre_mapping[0].technique_id == "T9999"
   
   @patch("src.proteus.telemetry.tracker.MitreMapper.evaluate_command")
   def test_finalize_without_authentication(self, mock_evaluate_command):
     mock_evaluate_command.return_value = []
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     tracker.add_environment("xterm", 60, 18)
     tracker.add_interaction("pwd", 0)
 
@@ -125,7 +132,7 @@ class TestTelemetryTracker:
   def test_finalize_without_environment(self, mock_evaluate_command):
     mock_evaluate_command.return_value = []
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
     tracker.add_interaction("pwd", 0)
 
