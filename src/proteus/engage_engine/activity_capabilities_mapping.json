@@ -1,0 +1,294 @@
+{
+  "EAC0001": { 
+    "name": "API Monitoring",
+    "summary": "Monitor local APIs that might be used by adversary tools and activity.",
+    "capabilities": [],
+    "_comment": "This capability involves monitoring the commands that the adversary is executing, the sensor and tracker implemented are already doing that, there is no need for capabilities."
+  },
+  "EAC0002": {
+    "name": "Network Monitoring",
+    "summary": "Monitor network traffic in order to detect adversary activity.",
+    "capabilities": [],
+    "_comment": "This capability involves monitoring the information that enters and leaves the system in order to detect any anomalies that might indicate the presence of an adversary, this honeypot is only deployed when an adversary is already inside the system, so there is no need for this capability."
+  },
+  "EAC0003": {
+    "name": "System Activity Monitoring",
+    "summary": "Collect system activity logs that can reveal adversary activity.",
+    "capabilities": [],
+    "_comment": "Revealing an adversary in the system is not a function of the honeypot, so there is no need for capabilities."
+  },
+  "EAC0004": {
+    "name": "Network Analysis",
+    "summary": "Analyze network traffic to gain intelligence on communications between systems.",
+    "capabilities": [],
+    "_comment": "This activity is related to exposing an adversary in the system while also decoding their protocols to offer the defender useful information about the attack, this is already done by the correlation engine an does not require additional capabilities."
+  },
+  "EAC0005": {
+    "name": "Lures",
+    "summary": "Deceptive systems and artifacts intended to serve as decoys, breadcrumbs, or bait to elicit a specific response from the adversary.",
+    "capabilities": [
+      {
+        "name": "GenerateTemporalFilesCapability",
+        "ponderation": 0.6
+      },
+      {
+        "name": "CreateLogFileCapability",
+        "ponderation": 0.6
+      },
+      {
+        "name": "ModifyBashHistoryCapability", 
+        "ponderation": 0.5
+      },
+      {
+        "name": "ModifyHostsFileCapability",
+        "ponderation": 0.5
+      },
+      {
+        "name": "InjectFakeProcessCapability",
+        "ponderation": 0.5
+      },
+      {
+        "name": "InjectFakeNetworkConnectionCapability",
+        "ponderation": 0.5
+      },
+      {
+        "name": "CreateFakeUserAccountCapability",
+        "ponderation": 0.4
+      },
+      {
+        "name": "CreateFakeAWSCredentialsCapability",
+        "ponderation": 0.2
+      },
+      {
+        "name": "CreateFileCapability",
+        "ponderation": 0.2
+      },
+      {
+        "name": "DeleteFileCapability",
+        "ponderation": 0.1
+      },
+      {
+        "name": "ModifyFileContentCapability",
+        "ponderation": 0.1
+      },
+      {
+        "name": "ModifyFileMetadataCapability",
+        "ponderation": 0.05
+      }
+    ],
+    "_comment": "This capability is related to the creation of lures, which are deceptive systems and artifacts intended to serve as decoys, breadcrumbs, or bait to elicit a specific response from the adversary. The capabilities listed here are related to the creation and manipulation of files and user accounts, which can be used to create lures that appear to be valuable targets for the adversary."
+  },
+  "EAC0006": {
+    "name": "Application Diversity",
+    "summary": "Present the adversary with a variety of installed applications and services.",
+    "capabilities": [],
+    "_comment": "This activity does not require the honeypot to adapt dinamycally, it is a static configuration of the honeypot, so there is no need for capabilities."
+  },
+  "EAC0007": {
+    "name": "Network Diversity",
+    "summary": "Use a diverse set of devices on the network to help establish the legitimacy of a deceptive network.",
+    "capabilities": [],
+    "_comment": "This activity does not require the honeypot to adapt dinamycally, it is a static configuration of the honeypot, so there is no need for capabilities."
+  },
+  "EAC0008": {
+    "name": "Burn in",
+    "summary": "Exercise a target system in a manner where it will generate desirable system artifacts.",
+    "capabilities": [
+      {
+        "name": "GenerateTemporalFilesCapability",
+        "ponderation": 0.7
+      },
+      {
+        "name": "CreateLogFileCapability",
+        "ponderation": 0.6
+      },
+      {
+        "name": "CreateFileCapability",
+        "ponderation": 0.2
+      }
+    ],
+    "_comment": "Altough this activity is more related to base configuration and post analysis, it also involves the creation of deceptive artifacts."
+  },
+  "EAC0009": {
+    "name": "Email Manipulation",
+    "summary": "Modify the flow of email in the environment.",
+    "capabilities": [],
+    "_comment": "This honeypot does not support emails, so there is no need for capabilities."
+  },
+  "EAC0010": {
+    "name": "Peripheral Management",
+    "summary": "Manage peripheral devices used on systems within the network for engagement purposes.",
+    "capabilities": [
+      {
+        "name": "InjectFakeNetworkConnectionCapability",
+        "ponderation": 0.6
+      }
+    ],
+    "_comment": "This activity involves managing peripheral devices like USB drives, disks, cameras and microphones. This honeypot currently only has support to add fake network connections."
+  },
+  "EAC0011": {
+    "name": "Pocket Litter",
+    "summary": "Data used to support the engagement narrative.",
+    "capabilities": [
+      {
+        "name": "GenerateUserDotFilesCapability",
+        "ponderation": 0.8
+      },
+      {
+        "name": "GenerateTemporalFilesCapability",
+        "ponderation": 0.6
+      },
+      {
+        "name": "CreateLogFileCapability",
+        "ponderation": 0.6
+      },
+      {
+        "name": "CreateFakeAWSCredentialsCapability",
+        "ponderation": 0.2
+      },
+      {
+        "name": "CreateFileCapability",
+        "ponderation": 0.2
+      }
+    ],
+    "_comment": "This activity involves the creation on fake artifacts that supports the engagement narrative, trying to increase the credibility of the system."
+  },
+  "EAC0012": {
+    "name": "Personas",
+    "summary": "Create fictitious human user(s) through a combination of planted data and revealed behavior patterns.",
+    "capabilities": [
+      {
+        "name": "SimulateActiveUserCapability", 
+        "ponderation": 0.5
+      },
+      {
+        "name": "GenerateUserDotFilesCapability",
+        "ponderation": 0.4
+      },
+      {
+        "name": "CreateFakeAWSCredentialsCapability",
+        "ponderation": 0.2
+      }
+    ],
+    "_comment": "This activity involves the creation of fictitious users with their own story and behavior, right now, this honeypot does not simulate active users, but it can generate fake user accounts and dotfiles for them."
+  },
+  "EAC0013": {
+    "name": "Malware Detonation",
+    "summary": "Execute malware under controlled conditions to analyze its functionality.",
+    "capabilities": [],
+    "_comment": "Currently, this honeypot does not support malware detonation under safe conditions."
+  },
+  "EAC0014": {
+    "name": "Software Manipulation",
+    "summary": "Make changes to a system's software properties and functions to achieve a desired effect.",
+    "capabilities": [
+      {
+        "name": "ManipulateCommandOutputCapability",
+        "ponderation": 0.9
+      },
+      {
+        "name": "WeakenPasswordPolicyCapability",
+        "ponderation": 0.8
+      },
+      {
+        "name": "InjectFakeProcessCapability",
+        "ponderation": 0.3
+      },
+      {
+        "name": "InjectFakeNetworkConnectionCapability",
+        "ponderation": 0.3
+      }
+    ],
+    "_comment": "This activity involves the manipulation of software outputs and password policies among other things."
+  },
+  "EAC0015": {
+    "name": "Information Manipulation",
+    "summary": "Conceal and reveal both facts and fictions to support a deception story",
+    "capabilities": [
+      {
+        "name": "AddEnviromentVariableCapability",
+        "ponderation": 0.3
+      }
+    ],
+    "_comment": "This activity focus on the credibility of revealed facts and fictions, the capabilities are mostly in progress"
+  },
+  "EAC0016": {
+    "name": "Network Manipulation",
+    "summary": "Make changes to network properties and functions to achieve a desired effect.",
+    "capabilities": [
+      {
+        "name": "InjectFakeNetworkConnectionCapability",
+        "ponderation": 0.2
+      }
+    ],
+    "_comment": "This activity involves the manipulation of network, mostly by blocking or throttling connections to frustrate the attacker's plans. The ability to download files from remote servers is still not implemented."
+  },
+  "EAC0017": {
+    "name": "Hardware Manipulation",
+    "summary": "Alter the hardware configuration of a system to limit what an adversary can do with the device.",
+    "capabilities": [],
+    "_comment": "Since this honeypot is a virtual machine, there is no need to implement hardware manipulation capabilities."
+  },
+  "EAC0018": {
+    "name": "Security Controls",
+    "summary": "Alter security controls to make the system more or less vulnerable to attack.",
+    "capabilities": [
+      {
+        "name": "WeakenPasswordPolicyCapability",
+        "ponderation": 0.6
+      }
+    ],
+    "_comment": "This activity states the importance of choosing wich security measures to implement and wich ones to avoid in order to encourage the atacker to engage in the honeypot but not making it too obvious."
+  },
+  "EAC0019": {
+    "name": "Baseline",
+    "summary": "Identify key system elements to establish a baseline and be prepared to reset a system to that baseline when necessary.",
+    "capabilities": [],
+    "_comment": "This activity states the importance to have a baseline to which you can reset the system, this is already implemented in the honeypot since the virtual file system and shell are generated with each connection and aren't able to change any file."
+  },
+  "EAC0020": {
+    "name": "Isolation",
+    "summary": "Configure devices, systems, networks, etc. to contain activity and data, thus preventing the expansion of an engagement beyond desired limits.",
+    "capabilities": [],
+    "_comment": "This activity states the importance of isolating the honeypot from the rest of the network, this is already implemented in the honeypot since it is deployed in a virtual machine that is completly isolated from the network and the physical machine."
+  },
+  "EAC0021": {
+    "name": "Attack Vector Migration",
+    "summary": "Move a malicious link, file, or device from its intended location to an engagement system or network for execution/use.",
+    "capabilities": [],
+    "_comment": "This activity involves migrating an attack vector such as a malicious link, file or email to a separated, secure enviroment or network, mitigating lateral movement. This honeypot is already isolated, so there is no need for capabilities."
+  },
+  "EAC0022": {
+    "name": "Artifact Diversity",
+    "summary": "Present the adversary with a variety of network and system artifacts.",
+    "capabilities": [
+      {
+        "name": "CreateFakeAWSCredentialsCapability",
+        "ponderation": 0.8
+      },
+      {
+        "name": "CreateFakeUserAccountCapability",
+        "ponderation": 0.3
+      },
+      {
+        "name": "InjectFakeNetworkConnectionCapability",
+        "ponderation": 0.3
+      },
+      {
+        "name": "InjectFakeProcessCapability",
+        "ponderation": 0.25
+      },
+      {
+        "name": "CreateTemporalFileCapability",
+        "ponderation": 0.2
+      }
+    ],
+    "_comment": "This activity consist of presenting the adversary with a variety of network and system artifacts such as accounts, credentials, processes and files, encouraging the attacker to engage with the honeypot and helping to identify their tactics, techniques and objectives."
+  },
+  "EAC0023": {
+    "name": "Introduced Vulnerabilities",
+    "summary": "Intentionally introduce vulnerabilities into the environment for the adversary to exploit.",
+    "capabilities": [],
+    "_comment": "This activity consists of intentionally introducing vulnerabilities to encourage the adversary to engage with the honeypot or specific parts of it."
+  }
+}

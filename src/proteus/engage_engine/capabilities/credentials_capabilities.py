@@ -1,10 +1,10 @@
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell
-from src.proteus.decision_engine.capabilities.utils import Capability, CapabilityResult
+from src.proteus.engage_engine.capabilities.utils import Capability, CapabilityResult
 
 class WeakenPasswordPolicyCapability(Capability):
-  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
-    super().__init__(vfs, virtual_shell, options)
+  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, eac_id: str, options: object):
+    super().__init__(vfs, virtual_shell, eac_id, options)
 
   @classmethod
   def option_fields(cls) -> dict[str, str]:
@@ -16,22 +16,20 @@ class WeakenPasswordPolicyCapability(Capability):
       if not self.vfs.mkfile_p(login_defs_path, uid=0, gid=0, size=4096, mode="rw-r--r--"):
         return CapabilityResult(
           success=False, 
-          eac_id="EAC0014", 
-          function_name="weaken_password_policy", 
+          eac_id=self.eac_id, 
           message="Failed to create /etc/login.defs. Cannot weaken password policy."
         )
     fake_login_defs = b"PASS_MAX_DAYS   99999\nPASS_MIN_DAYS   0\nPASS_MIN_LEN    4\n"
     self.vfs.override_file_contents(login_defs_path, fake_login_defs)
     return CapabilityResult(
       success=True, 
-      eac_id="EAC0014", 
-      function_name="weaken_password_policy", 
+      eac_id=self.eac_id, 
       message="Password policy weakened successfully."
     )
   
 class CreateFakeAWSCredentialsCapability(Capability):
-  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
-    super().__init__(vfs, virtual_shell, options)
+  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, eac_id: str, options: object):
+    super().__init__(vfs, virtual_shell, eac_id, options)
 
   @classmethod
   def option_fields(cls) -> dict[str, str]:
@@ -44,8 +42,7 @@ class CreateFakeAWSCredentialsCapability(Capability):
     if not user:
       return CapabilityResult(
         success=False, 
-        eac_id="EAC0005", 
-        function_name="create_fake_aws_credentials", 
+        eac_id=self.eac_id, 
         message="User is required to create fake AWS credentials."
       )
     creds_path = f"/home/{user}/.aws/credentials"
@@ -62,7 +59,6 @@ class CreateFakeAWSCredentialsCapability(Capability):
     
     return CapabilityResult(
       success=True, 
-      eac_id="EAC0005", 
-      function_name="create_fake_aws_credentials", 
+      eac_id=self.eac_id, 
       message=f"Fake AWS credentials created successfully at {creds_path}."
     )

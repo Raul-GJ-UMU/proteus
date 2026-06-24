@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import src.proteus.decision_engine.engage_engine as engage_engine_module
+import src.proteus.engage_engine.engage_engine as engage_engine_module
 from src.proteus.virtual_env.virtual_shell import ProcessData
 
 

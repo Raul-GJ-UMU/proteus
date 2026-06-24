@@ -7,21 +7,21 @@ from types import SimpleNamespace
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell, ProcessData
-from src.proteus.decision_engine.engage_parser import EngageParser
-from src.proteus.decision_engine.engage_mapping import EngageDetails
-from src.proteus.decision_engine.capabilities.account_capabilities import CreateFakeUserAccountCapability
-from src.proteus.decision_engine.capabilities.credentials_capabilities import (
+from src.proteus.engage_engine.engage_parser import EngageParser
+from src.proteus.engage_engine.engage_mapping import EngageDetails
+from src.proteus.engage_engine.capabilities.account_capabilities import CreateFakeUserAccountCapability
+from src.proteus.engage_engine.capabilities.credentials_capabilities import (
   CreateFakeAWSCredentialsCapability,
   WeakenPasswordPolicyCapability,
 )
-from src.proteus.decision_engine.capabilities.file_capabilities import (
+from src.proteus.engage_engine.capabilities.file_capabilities import (
   CreateFileCapability,
   DeleteFileCapability,
   ModifyFileContentCapability,
   ModifyFileMetadataCapability,
 )
-from src.proteus.decision_engine.capabilities.network_capabilites import InjectFakeNetworkConnectionCapability
-from src.proteus.decision_engine.capabilities.process_capabilities import InjectFakeProcessCapability
+from src.proteus.engage_engine.capabilities.network_capabilites import InjectFakeNetworkConnectionCapability
+from src.proteus.engage_engine.capabilities.process_capabilities import InjectFakeProcessCapability
 
 from loguru import logger
 

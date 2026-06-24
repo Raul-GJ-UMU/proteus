@@ -1,10 +1,10 @@
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import ProcessData, VirtualShell
-from src.proteus.decision_engine.capabilities.utils import Capability, CapabilityResult
+from src.proteus.engage_engine.capabilities.utils import Capability, CapabilityResult
 
 class InjectFakeProcessCapability(Capability):
-  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, options: object):
-    super().__init__(vfs, virtual_shell, options)
+  def __init__(self, vfs: VirtualFileSystem, virtual_shell: VirtualShell, eac_id: str, options: object):
+    super().__init__(vfs, virtual_shell, eac_id, options)
 
   @classmethod
   def option_fields(cls) -> dict[str, str]:
@@ -26,8 +26,7 @@ class InjectFakeProcessCapability(Capability):
     if not options:
       return CapabilityResult(
         success=False, 
-        eac_id="EAC0014", 
-        function_name="spoof_discovery_output", 
+        eac_id=self.eac_id,  
         message="Process data is required to inject a fake process."
       )
     pid, cpu_usage, memory_usage, vsz, rss, stat, start_time, time, command = (
@@ -53,8 +52,7 @@ class InjectFakeProcessCapability(Capability):
     ):
       return CapabilityResult(
         success=False, 
-        eac_id="EAC0014",
-        function_name="spoof_discovery_output",
+        eac_id=self.eac_id,
         message="Invalid data types in process_data. Expected types: pid (int), cpu_usage (float), memory_usage (float), vsz (int), rss (int), stat (str), start_time (str), time (str), command (str)."
       )
     process_data = ProcessData(
@@ -73,7 +71,6 @@ class InjectFakeProcessCapability(Capability):
     self.virtual_shell.inject_fake_process(process_data)
     return CapabilityResult(
       success=True, 
-      eac_id="EAC0014", 
-      function_name="spoof_discovery_output", 
+      eac_id=self.eac_id, 
       message="Discovery output spoofed successfully."
     )

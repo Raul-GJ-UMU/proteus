@@ -133,6 +133,8 @@ class VirtualShell:
       "env": self.do_env
     }
 
+    self.manipulated_output_commands: dict[str, str] = {}
+
     self.environ = {
       "USER": self.current_user,
       "HOME": f"/{self.current_user}",
@@ -274,7 +276,9 @@ class VirtualShell:
 
     output = ""
 
-    if cmd in self.commands:
+    if cmd in self.manipulated_output_commands:
+      output = self.manipulated_output_commands[cmd]
+    elif cmd in self.commands:
       try:
         output = self.commands[cmd](args)
       except Exception as e:
@@ -337,7 +341,14 @@ class VirtualShell:
     except Exception as e:
       logger.error(f"Error executing Cowrie mock for {cmd_name}: {e}")
       return f"bash: {cmd_name}: internal error\r\n"
-    
+  
+  def manipulate_command_output(self, cmd_name: str, output: str) -> bool:
+    # There are commands like 'ls' or 'pwd' that should not be manipulated because they depend on the actual file system state. For those commands, we will return the original output.
+    if cmd_name in ["ls", "pwd", "cd", "mkdir", "rmdir", "touch", "rm"]:
+      return False
+    self.manipulated_output_commands.setdefault(cmd_name, output)
+    return True
+
   # Command implementations
 
   def do_pwd(self, args: list):

@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 from pydantic import ValidationError
 
-from src.proteus.decision_engine.engage_parser import EngageParser
-from src.proteus.decision_engine.engage_engine import EngageEngine
+from src.proteus.engage_engine.engage_parser import EngageParser
+from src.proteus.engage_engine.engage_engine import EngageEngine
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
 from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
 import threading

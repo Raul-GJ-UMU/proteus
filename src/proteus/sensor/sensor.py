@@ -10,8 +10,8 @@ from paramiko.common import OPEN_SUCCEEDED, OPEN_FAILED_ADMINISTRATIVELY_PROHIBI
 from loguru import logger
 import threading
 
-from src.proteus.decision_engine.engage_parser import EngageParser
-from src.proteus.decision_engine.engage_engine import EngageEngine
+from src.proteus.engage_engine.engage_parser import EngageParser
+from src.proteus.engage_engine.engage_engine import EngageEngine
 from src.proteus.telemetry.tracker import SessionTracker
 
 from src.proteus.virtual_env.vfs import VirtualFileSystem
