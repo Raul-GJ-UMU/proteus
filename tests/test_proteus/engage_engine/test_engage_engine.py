@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from src.proteus.engage_engine.engage_parser import EngageParser
 import src.proteus.engage_engine.engage_engine as engage_engine_module
 from src.proteus.virtual_env.virtual_shell import ProcessData
 
@@ -77,8 +78,15 @@ class DummyLLMClient:
 
 def build_engine(monkeypatch, llm_content):
   monkeypatch.setattr(engage_engine_module, "EngageParser", DummyParser)
-  monkeypatch.setattr(engage_engine_module, "ModifyFileContentCapability", DummyFileCapability)
-  monkeypatch.setattr(engage_engine_module, "InjectFakeNetworkConnectionCapability", DummyNetworkCapability)
+
+  monkeypatch.setattr(
+    engage_engine_module.EngageEngine,
+    "discover_capabilities",
+    lambda self, x: {                  
+      "modifyFileContentCapability": DummyFileCapability,
+      "injectFakeNetworkConnectionCapability": DummyNetworkCapability,
+    },
+  )
 
   vfs = MagicMock()
   virtual_shell = MagicMock()
@@ -119,7 +127,7 @@ def test_execute_deception_builds_file_options(monkeypatch):
     '{"file_path": "/tmp/decoy.txt", "new_content": "updated decoy content"}',
   )
 
-  engine.execute_deception("modify_file_content", "command", "description")
+  engine.execute_deception("modifyFileContentCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.file_path == "/tmp/decoy.txt"
@@ -132,7 +140,7 @@ def test_execute_deception_flattens_nested_file_options(monkeypatch):
     '{"command": {"name": "modify_file_content", "arguments": {"file_path": "/tmp/decoy.txt", "new_content": "updated decoy content"}}}',
   )
 
-  engine.execute_deception("modify_file_content", "command", "description")
+  engine.execute_deception("modifyFileContentCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.file_path == "/tmp/decoy.txt"
@@ -145,7 +153,7 @@ def test_execute_deception_builds_network_options(monkeypatch):
     '{"network_data": {"protocol": "TCP", "local_address": "127.0.0.1:8080", "remote_address": "192.168.1.1:443", "state": "ESTABLISHED"}}',
   )
 
-  engine.execute_deception("inject_fake_network_connection", "command", "description")
+  engine.execute_deception("injectFakeNetworkConnectionCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.network_data == {

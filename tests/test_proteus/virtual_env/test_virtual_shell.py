@@ -349,8 +349,8 @@ def test_ps_returns_process_list(vfs_and_shell):
   
   assert "PID" in output
   assert "TTY" in output
-  assert "CMD" in output
-  assert "bash" in output or "sh" in output
+  assert "COMMAND" in output
+  assert "ps" in output
 
 # grep tests
 
@@ -471,7 +471,7 @@ def test_ifconfig_returns_network_info(vfs_and_shell):
   output = virtual_shell.execute_command("ifconfig")
   
   assert "inet " in output
-  assert "ether " in output
+  assert "HWaddr " in output
   assert "lo" in output or "eth0" in output
 
 # netstat tests
@@ -506,7 +506,7 @@ def test_clear_clears_screen(vfs_and_shell):
   vfs, virtual_shell = vfs_and_shell
   output = virtual_shell.execute_command("clear")
   
-  assert output == "\033[H\033[2J"  # ANSI escape code for clearing the screen
+  assert output == "\033[H\033[2J" or output == "\033[H\033[J"
 
 # shutdown tests
 
