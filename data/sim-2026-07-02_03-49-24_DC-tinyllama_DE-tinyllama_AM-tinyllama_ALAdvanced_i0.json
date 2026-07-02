@@ -1,0 +1,104 @@
+{
+  "session_id": "sim-2026-07-02_03-49-24_DC-tinyllama_DE-tinyllama_AM-tinyllama_ALAdvanced_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 6944,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-02T01:49:31.362760Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-02T01:49:32.383151Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-02T01:49:37.890893Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "who",
+      "timestamp": "2026-07-02T01:49:40.743672Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "uname -a >> /tmp/T1082.txt",
+      "timestamp": "2026-07-02T01:49:43.465270Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /etc/lsb-release ]; then cat /etc/lsb-release >> /tmp/T1082.txt; fi",
+      "timestamp": "2026-07-02T01:49:44.474445Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /etc/redhat-release ]; then cat /etc/redhat-release >> /tmp/T1082.txt; fi",
+      "timestamp": "2026-07-02T01:49:45.469635Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /etc/issue ]; then cat /etc/issue >> /tmp/T1082.txt; fi",
+      "timestamp": "2026-07-02T01:49:46.470356Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /etc/os-release ]; then cat /etc/os-release >> /tmp/T1082.txt; fi",
+      "timestamp": "2026-07-02T01:49:47.473829Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "uptime >> /tmp/T1082.txt",
+      "timestamp": "2026-07-02T01:49:48.472500Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "cat /tmp/T1082.txt 2>/dev/null",
+      "timestamp": "2026-07-02T01:49:49.474249Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /sys/class/dmi/id/bios_version ]; then cat /sys/class/dmi/id/bios_version | grep -i amazon; fi",
+      "timestamp": "2026-07-02T01:50:01.820604Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "if [ -f /sys/class/dmi/id/product_name ]; then cat /sys/class/dmi/id/product_name | grep -i \"Droplet\\|HVM\\|VirtualBox\\|VMware\"; fi",
+      "timestamp": "2026-07-02T01:50:05.051376Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-02T01:50:08.351180Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-02T01:49:31.132217Z",
+    "end_time": "2026-07-02T01:50:08.352690Z",
+    "total_commands": 13,
+    "exit_reason": "User requested logout"
+  }
+}

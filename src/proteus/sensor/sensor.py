@@ -22,6 +22,7 @@ logger.add("logs/proteus_sensor.log", rotation="10 MB")
 load_dotenv()
 
 RSA_KEY_PATH = os.getenv("PROTEUS_RSA_KEY_FILE")
+ENABLE_METRICS = os.getenv("ENABLE_METRICS", "false").lower() == "true"
 
 def get_or_generate_rsa_key(path: str) -> paramiko.RSAKey:
   os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -102,40 +103,39 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
 
         if not full_command:
           continue
-
+        
         command_history.append(full_command)
         command_pointer = len(command_history)
         tracker.add_interaction(full_command, backspace_count)
         backspace_count = 0
         logger.info(f"Command captured: {full_command}")
 
-        if full_command:
-          if full_command.lower() in ("exit", "logout"):
-            channel.send(b"logout\r\n")
-
-            try:
-              if not channel.closed:
-                channel.close()
-            except Exception as e:
-              pass
-            finally:
-              save_thread = threading.Thread(target=save_session_data, args=(tracker, "User requested logout"))
-              save_thread.start()
-            break
-
-          elif full_command.lower() == "history":
-            result = ""
-            for idx, cmd in enumerate(command_history, start=1):
-              result += f"{idx}: {cmd}\r\n"
-            channel.send(result.encode("utf-8"))
+        if full_command.lower() in ("exit", "logout"):
+          channel.send(b"logout\r\n")
 
           try:
-            response = shell.execute_command(full_command)
-          except ShellTerminationError as termination:
-            if termination.output:
-              channel.send(termination.output.encode("utf-8"))
-            raise
-          channel.send(response.encode("utf-8"))
+            if not channel.closed:
+              channel.close()
+          except Exception as e:
+            pass
+          finally:
+            save_thread = threading.Thread(target=save_session_data, args=(tracker, "User requested logout"))
+            save_thread.start()
+          break
+
+        elif full_command.lower() == "history":
+          result = ""
+          for idx, cmd in enumerate(command_history, start=1):
+            result += f"{idx}: {cmd}\r\n"
+          channel.send(result.encode("utf-8"))
+
+        try:
+          response = shell.execute_command(full_command)
+        except ShellTerminationError as termination:
+          if termination.output:
+            channel.send(termination.output.encode("utf-8"))
+          raise
+        channel.send(response.encode("utf-8"))
         
         command_buffer = ""
         prompt = shell.get_prompt()
@@ -214,11 +214,6 @@ def start_sensor(host="0.0.0.0", port=2222):
       base_url=os.getenv("OPENAI_BASE_URL"),
       api_key=os.getenv("OPENAI_API_KEY")
     )
-    llm_model = os.getenv("OPENAI_MODEL")
-
-    if not llm_model:
-      logger.error("OPENAI_MODEL not configured in the .env file. Cannot generate CTI sentence.")
-      return
     if not llm_client.api_key:
       logger.error("OPENAI_API_KEY not configured in the .env file. Cannot generate CTI sentence.")
       return
@@ -234,7 +229,7 @@ def start_sensor(host="0.0.0.0", port=2222):
 
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
 
-      session_id = f"session_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[-8:]}_{addr[0]}"
+      session_id = os.getenv("SESSION_ID", f"session_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[-8:]}_{addr[0]}")
       
       shell = VirtualShell(global_vfs)
 
@@ -244,12 +239,11 @@ def start_sensor(host="0.0.0.0", port=2222):
         vfs=global_vfs,
         virtual_shell=shell,
         llm_client=llm_client,
-        llm_model=llm_model
       )
 
       transport = paramiko.Transport(client)
       transport.add_server_key(host_key)
-      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, llm_model, engage_parser, engage_engine)
+      tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, engage_parser, engage_engine)
 
       server = Sensor(tracker)
 

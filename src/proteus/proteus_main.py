@@ -1,3 +1,5 @@
+import os
+
 from loguru import logger
 from dotenv import load_dotenv
 from src.proteus.sensor.sensor import start_sensor
@@ -12,7 +14,8 @@ def main():
   logger.info("======================================")
   
   try:
-    start_sensor(host="0.0.0.0", port=2222)
+    port = os.getenv("PROTEUS_PORT", "2222")
+    start_sensor(host="0.0.0.0", port=int(port))
   
   except KeyboardInterrupt:
     logger.warning("Shutting down Proteus...")

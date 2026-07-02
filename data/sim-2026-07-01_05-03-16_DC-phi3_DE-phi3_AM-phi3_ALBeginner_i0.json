@@ -1,0 +1,38 @@
+{
+  "session_id": "sim-2026-07-01_05-03-16_DC-phi3_DE-phi3_AM-phi3_ALBeginner_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 60021,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-01T03:03:23.379830Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-01T03:03:24.406481Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-01T03:04:06.518389Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-01T03:03:23.146757Z",
+    "end_time": "2026-07-01T03:04:06.519813Z",
+    "total_commands": 2,
+    "exit_reason": "User requested logout"
+  }
+}

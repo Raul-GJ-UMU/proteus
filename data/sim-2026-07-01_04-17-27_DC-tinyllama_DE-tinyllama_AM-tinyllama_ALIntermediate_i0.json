@@ -1,0 +1,62 @@
+{
+  "session_id": "sim-2026-07-01_04-17-27_DC-tinyllama_DE-tinyllama_AM-tinyllama_ALIntermediate_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 57981,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-01T02:17:33.735364Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-01T02:17:34.747770Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-01T02:17:38.852290Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "who",
+      "timestamp": "2026-07-01T02:17:40.621862Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "system_profiler",
+      "timestamp": "2026-07-01T02:17:42.537927Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "ls -al /Applications",
+      "timestamp": "2026-07-01T02:17:44.117978Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-01T02:17:45.697508Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-01T02:17:33.511401Z",
+    "end_time": "2026-07-01T02:17:45.699227Z",
+    "total_commands": 6,
+    "exit_reason": "User requested logout"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "session_id": "sim-2026-07-01_20-07-24_DC-phi3_DE-phi3_AM-tinyllama_ALBeginner_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 65263,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-01T18:07:31.167381Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-01T18:07:32.190110Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1033",
+        "confidence": 0.95,
+        "cti_sentence": "The 'users' command is used to list all users currently logged into the system or on a networked device with high confidence."
+      }
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-01T18:07:39.663982Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.25,
+        "cti_sentence": "The 'w' command is ambiguous without context as it could refer to a shell built-in or an external program like wget for downloading files from the internet."
+      }
+    },
+    {
+      "command": "who",
+      "timestamp": "2026-07-01T18:07:41.550093Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1033",
+        "confidence": 0.95,
+        "cti_sentence": "The 'who' command is typically used to display the current user session information and can be associated with system or account enumeration techniques."
+      }
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-01T18:07:43.271007Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-01T18:07:30.905148Z",
+    "end_time": "2026-07-01T18:08:25.929407Z",
+    "total_commands": 4,
+    "exit_reason": "User requested logout"
+  }
+}

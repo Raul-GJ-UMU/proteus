@@ -1,0 +1,56 @@
+{
+  "session_id": "sim-2026-07-02_02-06-04_DC-tinyllama_DE-tinyllama_AM-tinyllama_ALIntermediate_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 7974,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-02T00:06:11.898220Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-02T00:06:12.934862Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-02T00:06:19.948565Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "who",
+      "timestamp": "2026-07-02T00:06:23.405341Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "uname -a >> /tmp/T1082.txt",
+      "timestamp": "2026-07-02T00:06:26.754541Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-02T00:06:30.113701Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-02T00:06:11.553638Z",
+    "end_time": "2026-07-02T00:06:30.115569Z",
+    "total_commands": 5,
+    "exit_reason": "User requested logout"
+  }
+}

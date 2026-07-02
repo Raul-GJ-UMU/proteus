@@ -50,7 +50,7 @@ class Interactor:
       output += self.shell.recv(4096).decode('utf-8')
     
     clean_output = output.strip()
-    logger.debug(f"Command output: {clean_output}")
+    # logger.debug(f"Command output: {clean_output}")
     return clean_output
   
   def disconnect(self):

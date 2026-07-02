@@ -18,6 +18,10 @@ class AuthenticationInfo(BaseModel):
     password: str = Field(..., description="The password used for authentication")
     timestamp: datetime = Field(..., description="The timestamp of the authentication attempt")
 
+class MitreMappingError(BaseModel):
+    error_type: str = Field(..., description="The type of error encountered during MITRE mapping evaluation")
+    error_message: str = Field(..., description="A descriptive message explaining the error encountered during MITRE mapping evaluation")
+
 class MitreMapping(BaseModel):
     technique_id: str = Field(..., description="The MITRE technique ID associated with the command")
     confidence: float = Field(..., description="The confidence score of the MITRE mapping (between 0 and 1)")

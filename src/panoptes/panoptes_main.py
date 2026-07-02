@@ -13,7 +13,11 @@ if __name__ == "__main__":
 
   attack_engine = AttackEngine(
     atomics_path=os.path.join("src", "panoptes", "atomics"),
-    interactor=interactor
+    interactor=interactor,
+    enable_metrics=os.getenv("ENABLE_METRICS", "false").lower() == "true",
+    metrics_file="attack_metrics.jsonl",
   )
 
-  attack_engine.run_simulation(config_path=os.path.join("src", "panoptes", "attack_engine", "config.yaml"))
+  session_id = os.getenv("SESSION_ID", "default_session")
+
+  attack_engine.run_simulation(session_id=session_id)

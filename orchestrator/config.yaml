@@ -1,0 +1,43 @@
+simulation_name: Honeypot Evaluation Matrix
+repetitions: 1 # For median calculation
+
+proteus:
+  correlation_models:
+    - "tinyllama"
+    - "phi3"
+    - "qwen2:7b"
+  correlation_engine_temperature: 0.0
+  engage_models:
+    - "tinyllama"
+    - "phi3"
+    - "qwen2:7b"
+  temperature: 0.0
+  engage_engine_temperature: 0.5
+  engage_engine_threshold: 0.6
+
+panoptes:
+  llm_models:
+    - "tinyllama"
+    - "phi3"
+    - "qwen2:7b"
+  temperature: 0.2
+  threshold: 0.4
+  attackers:
+    - name: "Beginner_example"
+      level: "Beginner"
+      techniques:
+        - "T1033" # System Owner/User Discovery
+    - name: "Intermediate_example"
+      level: "Intermediate"
+      techniques:
+        - "T1033"
+        - "T1082" # System Information Discovery
+        - "T1016" # System Network Configuration Discovery
+    - name: "Advanced_example"
+      level: "Advanced"
+      techniques:
+        - "T1033"
+        - "T1082"
+        - "T1016"
+        - "T1049" # System Network Connections Discovery
+        - "T1057" # Process Discovery

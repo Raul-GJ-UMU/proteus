@@ -1,0 +1,102 @@
+{
+  "session_id": "sim-2026-07-01_20-27-29_DC-phi3_DE-phi3_AM-tinyllama_ALAdvanced_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 1887,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-01T18:27:35.491692Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-01T18:27:36.506414Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1033",
+        "confidence": 0.95,
+        "cti_sentence": "The 'users' command is used to list all users currently logged into the system or on a networked device with high confidence."
+      }
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-01T18:27:41.042811Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.25,
+        "cti_sentence": "The 'w' command is ambiguous without context as it could refer to a shell built-in or an external program like wget for downloading files from the internet."
+      }
+    },
+    {
+      "command": "who",
+      "timestamp": "2026-07-01T18:27:42.949142Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1033",
+        "confidence": 0.95,
+        "cti_sentence": "The 'who' command is used to display information about users currently logged on the system and their terminals or sessions. This maps to user account discovery with very high confidence."
+      }
+    },
+    {
+      "command": "uname -a >> #{output_file}",
+      "timestamp": "2026-07-01T18:27:44.719966Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.65,
+        "cti_sentence": "The 'uname -a >> #{output_file}' command is used to display system information and append it to a file named '#{output_file}'. This indicates an attempt at gathering basic system details with moderate confidence."
+      }
+    },
+    {
+      "command": "if [ -f /etc/lsb-release ]; then cat /etc/lsb-release >> #{output_file}; fi",
+      "timestamp": "2026-07-01T18:27:46.394929Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.65,
+        "cti_sentence": "The sequence of commands suggests a file and directory discovery process within the context provided by previous interactions with 'users' and 'w'. The command is likely part of enumerating system information."
+      }
+    },
+    {
+      "command": "if [ -f /etc/redhat-release ]; then cat /etc/redhat-release >> #{output_file}; fi",
+      "timestamp": "2026-07-01T18:27:48.405563Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.95,
+        "cti_sentence": "The 'if [ -f /etc/redhat-release ]; then cat /etc/redhat-release >> #{output_file}; fi' command is used to read the contents of a file that contains information about the Red Hat distribution version and other system details. This maps to credential access with very high confidence."
+      }
+    },
+    {
+      "command": "if [ -f /etc/issue ]; then cat /etc/issue >> #{output_file}; fi",
+      "timestamp": "2026-07-01T18:27:50.163813Z",
+      "backspaces": 0,
+      "mitre_mapping": {
+        "technique_id": "T1083",
+        "confidence": 0.95,
+        "cti_sentence": "The 'if [ -f /etc/issue ]; then cat /etc/issue >> #{output_file}; fi' command is used to append the contents of '/etc/issue', which often contains system information or a custom greeting message for users. This maps to file and directory discovery with very high confidence."
+      }
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-01T18:27:51.873455Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-01T18:27:35.266107Z",
+    "end_time": "2026-07-01T18:30:12.330417Z",
+    "total_commands": 8,
+    "exit_reason": "User requested logout"
+  }
+}

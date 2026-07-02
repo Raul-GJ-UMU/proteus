@@ -1,16 +1,18 @@
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 from pydantic import ValidationError
+import time
 
 from src.proteus.engage_engine.engage_parser import EngageParser
 from src.proteus.engage_engine.engage_engine import EngageEngine
 from src.proteus.correlation_engine.mitre_mapper import MitreMapper
-from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo
+from .models import MitreMapping, NetworkInfo, Session, SessionInfo, AuthenticationInfo, EnvironmentInfo, InteractionInfo, MitreMappingError
 import threading
 from loguru import logger
 
-ENGAGE_CONFIDENCE_THRESHOLD = 0.1
+DEFAULT_ENGAGE_CONFIDENCE_THRESHOLD = 0.6
 
 logger.add("logs/proteus_tracker.log", rotation="10 MB")
 
@@ -22,7 +24,6 @@ class SessionTracker:
     source_port: int, 
     client_version: str,
     llm_client,
-    llm_model,
     engage_parser: EngageParser,
     engage_engine: EngageEngine
   ):
@@ -37,12 +38,16 @@ class SessionTracker:
     self.env_info = None
     self.auth_info = None
     self.interactions: list[InteractionInfo] = []
-    self.mitre_mapper = MitreMapper(llm_client, llm_model)
+    self.attack_data = self._load_attack_data()
+    self.mitre_mapper = MitreMapper(llm_client, os.getenv("PROTEUS_CORRELATION_MODEL", "phi3"), list(self.attack_data.keys()))
     self.mitre_mapping: list[MitreMapping] = []
     self.analysis_threads: list[threading.Thread] = []
     self.engage_parser = engage_parser
     self.engage_engine = engage_engine
-    self.attack_data = self._load_attack_data()
+    self.enable_metrics = os.getenv("ENABLE_METRICS", "false").lower() == "true"
+    if self.enable_metrics:
+      self.metrics_file = os.getenv("METRICS_FILE", "defend_metrics.jsonl")
+    self.engage_engine_confidence_threshold = float(os.getenv("PROTEUS_ENGAGE_ENGINE_THRESHOLD", DEFAULT_ENGAGE_CONFIDENCE_THRESHOLD))
 
   def _load_attack_data(self) -> dict[str, str]:
     attack_file = Path("enterprise-attack.json")
@@ -105,21 +110,47 @@ class SessionTracker:
 
     self.interactions.append(interaction)
 
-    def background_analisis(command: str):
+    def background_analisis(command: str, target_interaction: InteractionInfo):
       try:
+        start_time = time.time()
+
         mitre_result = self.mitre_mapper.evaluate_command(command, self.interactions)
-        if mitre_result:
-          self.interactions[-1].mitre_mapping = mitre_result
-          if mitre_result.confidence >= ENGAGE_CONFIDENCE_THRESHOLD:
+
+        is_error = isinstance(mitre_result, MitreMappingError)
+
+        if is_error:
+          logger.error(f"MITRE mapping error for command '{command}': {mitre_result.error_type} - {mitre_result.error_message}")
+
+        latency_ms = round((time.time() - start_time) * 1000, 2)
+
+        if self.enable_metrics:
+          metrics_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "session_id": self.session_id,
+            "llm_model": self.mitre_mapper.llm_model,
+            "event_type": "correlation",
+            "command": command,
+            "command_history": [interaction.command for interaction in self.interactions],
+            "mitre_mapping_error": mitre_result.error_type if is_error else None,
+            "predicted_technique": mitre_result.technique_id if not is_error and mitre_result else None,
+            "confidence": mitre_result.confidence if not is_error and mitre_result else 0.0,
+            "latency_ms": latency_ms
+          }
+          with open(self.metrics_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(metrics_data) + "\n")
+
+        if not is_error:
+          target_interaction.mitre_mapping = mitre_result
+          if mitre_result.confidence >= self.engage_engine_confidence_threshold:
             engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_result.technique_id)
-            engage_ids = list[str]()
-            for detail in engage_details:
-              engage_ids.append(detail.activity.activity_id)
-            engage_ids_set = set(engage_ids)
-            logger.info(f"Engage activities for command '{command}': {engage_ids_set}")
+            # engage_ids = [detail.activity.activity_id for detail in engage_details]
+            # logger.info(f"Engage activities for command '{command}': {engage_ids}")
+            if len(engage_details) == 0:
+              logger.warning(f"No Engage activities found for MITRE technique '{mitre_result.technique_id}' for command '{command}'.")
+              return
             description = self.attack_data.get(mitre_result.technique_id, "No description available.")
             try:
-              self.engage_engine.evaluate_and_react(command, description, engage_details)
+              self.engage_engine.evaluate_and_react(self.session_id, command, description, engage_details)
             except ValidationError as e:
               logger.error(f"Error validating fields for command '{command}': {e}")
       except Exception as e:
@@ -128,7 +159,7 @@ class SessionTracker:
     if command.strip() and not command.startswith("logout") and not command.startswith("exit"):
       ai_thread = threading.Thread(
         target=background_analisis,
-        args=(command,),
+        args=(command, interaction),
         daemon=True
       )
       self.analysis_threads.append(ai_thread)

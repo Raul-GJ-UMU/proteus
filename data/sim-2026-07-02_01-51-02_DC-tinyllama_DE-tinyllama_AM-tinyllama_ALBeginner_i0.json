@@ -1,0 +1,44 @@
+{
+  "session_id": "sim-2026-07-02_01-51-02_DC-tinyllama_DE-tinyllama_AM-tinyllama_ALBeginner_i0",
+  "network": {
+    "source_ip": "127.0.0.1",
+    "source_port": 7368,
+    "ssh_client": "SSH-2.0-paramiko_4.0.0"
+  },
+  "environment": {
+    "terminal_type": "vt100",
+    "shell_width": 80,
+    "shell_height": 24
+  },
+  "authentication": {
+    "username": "root",
+    "password": "rootPassword",
+    "timestamp": "2026-07-01T23:51:12.738754Z"
+  },
+  "interactions": [
+    {
+      "command": "users",
+      "timestamp": "2026-07-01T23:51:13.794778Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "w",
+      "timestamp": "2026-07-01T23:51:26.394847Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    },
+    {
+      "command": "exit",
+      "timestamp": "2026-07-01T23:51:32.034584Z",
+      "backspaces": 0,
+      "mitre_mapping": null
+    }
+  ],
+  "session_metadata": {
+    "start_time": "2026-07-01T23:51:12.338971Z",
+    "end_time": "2026-07-01T23:51:34.610720Z",
+    "total_commands": 3,
+    "exit_reason": "User requested logout"
+  }
+}

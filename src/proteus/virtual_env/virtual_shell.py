@@ -12,6 +12,7 @@ from loguru import logger
 import posixpath
 from unittest.mock import MagicMock
 from pydantic import BaseModel, Field
+import re
 
 from src.proteus.virtual_env.vfs import FSDirectory, FSFile, VirtualFileSystem
 from src.proteus.virtual_env.cowrie.shell.command import MockProtocol
@@ -58,8 +59,7 @@ class NetworkConnection(BaseModel):
   local_address: str = Field(..., description="The local address and port (e.g., 127.0.0.1:8080)")
   remote_address: str = Field(..., description="The remote address and port (e.g., 192.168.1.1:443)")
   state: str = Field(..., description="The state of the network connection (e.g., ESTABLISHED, LISTEN)")
-
-
+  
 class ShellTerminationError(RuntimeError):
   def __init__(self, output: str, exit_reason: str):
     super().__init__(exit_reason)
@@ -237,11 +237,69 @@ class VirtualShell:
 
       output = self._build_shutdown_output("power off")
       raise ShellTerminationError(output, "System shutdown requested")
+  
+  def _handle_if_statement(self, command: str) -> str:
+    match = re.search(r'^if\s+\[\s*(.+?)\s*\]\s*;\s*then\s+(.+?)\s*(?:;\s*else\s+(.+?)\s*)?;\s*fi\s*;?\s*(.*)$', command, re.DOTALL | re.IGNORECASE)
+    
+    if not match:
+      return "bash: syntax error near unexpected token `fi'\n"
+
+    condition = match.group(1).strip()
+    then_block = match.group(2).strip()
+    else_block = match.group(3).strip() if match.group(3) else ""
+    remainder = match.group(4).strip()
+
+    output = ""
+
+    if self._evaluate_condition(condition):
+      output += self.execute_command(then_block)
+    elif else_block:
+      output += self.execute_command(else_block)
+
+    if remainder:
+      output += self.execute_command(remainder)
+
+    return output
+
+  def _evaluate_condition(self, condition: str) -> bool:
+    def resolve_subshell(match):
+      sub_cmd = match.group(1)
+      return self.execute_command(sub_cmd).strip()
+
+    condition = re.sub(r'\$\((.+?)\)', resolve_subshell, condition)
+    condition = re.sub(r'`(.+?)`', resolve_subshell, condition)
+
+    condition = condition.replace('"', '').replace("'", "")
+
+    parts = condition.split()
+    if len(parts) == 3:
+      left, op, right = parts
+      if op in ('=', '=='):
+        return left == right
+      elif op == '!=':
+        return left != right
+
+    return False
 
   def execute_command(self, command: str) -> str:
-    if not command.strip():
+    command = command.strip()
+    if not command:
       return ""
     
+    # Handle 'if' statements
+    if command.startswith("if ") or command.startswith("if["):
+      return self._handle_if_statement(command)
+    
+    # Handle enviroment variables
+    if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*=', command):
+      var_name, var_value = command.split('=', 1)
+      self.environ[var_name] = var_value.replace('"', '').replace("'", "")
+      return ""
+    
+    for var_name, var_value in self.environ.items():
+      command = command.replace(f"${var_name}", var_value)
+
+    # Handle output redirection
     redirect_file = None
     is_append = False
 
