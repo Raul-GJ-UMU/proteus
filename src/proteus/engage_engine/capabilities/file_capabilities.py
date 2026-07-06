@@ -28,6 +28,8 @@ class CreateFileCapability(Capability):
         eac_id=self.eac_id, 
         message="File content is required to create a file."
       )
+    if isinstance(file_content, str):
+      file_content = file_content.encode('utf-8')
     
     if self.vfs.exists(file_path):
       return CapabilityResult(
@@ -116,6 +118,8 @@ class ModifyFileContentCapability(Capability):
         eac_id=self.eac_id, 
         message="New content is required to modify file content."
       )
+    if isinstance(new_content, str):
+      new_content = new_content.encode('utf-8')
     
     if not self.vfs.exists(file_path):
       return CapabilityResult(
@@ -205,6 +209,14 @@ class ModifyBashHistoryCapability(Capability):
       )
 
     replace = getattr(self.options, "replace", False)
+    if isinstance(replace, str):
+      replace = replace.lower() == "true"
+    if not isinstance(replace, bool):
+      return CapabilityResult(
+        success=False, 
+        eac_id=self.eac_id, 
+        message="Replace option must be a boolean value."
+      )
 
     if replace:
       new_history = "\n".join(commands) + "\n"
@@ -292,6 +304,8 @@ class CreateLogFileCapability(Capability):
         eac_id=self.eac_id, 
         message="Log content is required to create a log file."
       )
+    if isinstance(log_content, str):
+      log_content = log_content.encode('utf-8')
     
     if self.vfs.exists(log_path):
       return CapabilityResult(
@@ -336,6 +350,8 @@ class GenerateTemporalFilesCapability(Capability):
     
     for i in range(len(files)):
       temp_file_path = f"/tmp/temp_file_{i}.txt"
+      if isinstance(files[i]["size"], str):
+        files[i]["size"] = int(files[i]["size"])
       self.vfs.mkfile_p(temp_file_path, uid=0, gid=0, size=files[i]["size"], mode="rw-r--r--")
     
     return CapabilityResult(
@@ -343,5 +359,3 @@ class GenerateTemporalFilesCapability(Capability):
       eac_id=self.eac_id, 
       message=f"{len(files)} temporal files generated successfully."
     )
-
-# TODO: Create a fake encrypted zip file to make the attacker waste time trying to open it. (EAC0015)

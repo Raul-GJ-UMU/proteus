@@ -1,0 +1,41 @@
+simulation_name: Honeypot Evaluation Matrix
+repetitions: 1 # For median calculation
+
+proteus:
+  correlation_models:
+    - "tinyllama"
+    - "phi3"
+    - "qwen2:7b"
+  correlation_engine_temperature: 0.0
+  engage_models:
+    - "tinyllama"
+    - "phi3"
+    - "qwen2:7b"
+  temperature: 0.0
+  engage_engine_temperature: 0.5
+  engage_engine_threshold: 0.6
+
+panoptes:
+  llm_models:
+    - "phi3"
+  temperature: 0.2
+  threshold: 0.4
+  attackers:
+    - name: "Beginner_example"
+      level: "Beginner"
+      techniques:
+        - "T1033" # System Owner/User Discovery
+    - name: "Intermediate_example"
+      level: "Intermediate"
+      techniques:
+        - "T1082" # System Information Discovery
+        - "T1083" # File and Directory Discovery
+        - "T1003.008" # OS Credential Dumping: /etc/passwd and /etc/shadow
+    - name: "Advanced_example"
+      level: "Advanced"
+      techniques:
+        - "T1049" # System Network Connections Discovery
+        - "T1057" # Process Discovery
+        - "T1222.002" # File and Directory Permissions Modification: Linux and Mac Permissions
+        - "T1548.003" # Abuse Elevation Control Mechanism: Sudo and Sudo Caching
+        - "T1105" # Ingress Tool Transfer

@@ -225,3 +225,8 @@ secrets/
 
 filesystem.json
 data/session_*.json
+data/sim-*
+results/*
+metrics.jsonl
+attack_metrics.jsonl
+defend_metrics.jsonl

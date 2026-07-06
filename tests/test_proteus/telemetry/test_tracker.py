@@ -13,13 +13,12 @@ source_ip = "192.168.1.50"
 source_port = 12345
 client_version = "OpenSSH_8.0"
 dummy_client = "dummy-client"
-dummy_model = "dummy-model"
 engage_parser = MagicMock()
 engage_mapper = MagicMock()
 
 class TestTelemetryTracker:
   def test_tracker_initialization(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
 
     assert tracker.session_id is not None
     assert tracker.session_id.startswith("session_")
@@ -32,7 +31,7 @@ class TestTelemetryTracker:
     assert tracker.network_info.ssh_client == client_version
   
   def test_add_authentication(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
 
     assert tracker.auth_info is not None
@@ -41,7 +40,7 @@ class TestTelemetryTracker:
     assert isinstance(tracker.auth_info.timestamp, datetime)
   
   def test_add_environment(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     terminal_type = "xterm"
     shell_width = 80
     shell_height = 24
@@ -53,7 +52,7 @@ class TestTelemetryTracker:
     assert tracker.env_info.shell_height == shell_height
   
   def test_add_interaction(self):
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     commands = ["ls -la", "cat /etc/passwd"]
     backspaces = [0, 2]
     tracker.add_interaction(commands[0], backspaces[0])
@@ -81,7 +80,7 @@ class TestTelemetryTracker:
     engage_parser = MagicMock()
     engage_mapper = MagicMock()
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
     tracker.add_environment("xterm", 60, 18)
     tracker.add_interaction("whoami", 3)
@@ -121,7 +120,7 @@ class TestTelemetryTracker:
   def test_finalize_without_authentication(self, mock_evaluate_command):
     mock_evaluate_command.return_value = []
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     tracker.add_environment("xterm", 60, 18)
     tracker.add_interaction("pwd", 0)
 
@@ -132,7 +131,7 @@ class TestTelemetryTracker:
   def test_finalize_without_environment(self, mock_evaluate_command):
     mock_evaluate_command.return_value = []
 
-    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, dummy_model, engage_parser, engage_mapper)
+    tracker = SessionTracker(session_id, source_ip, source_port, client_version, dummy_client, engage_parser, engage_mapper)
     tracker.add_authentication("root", "password")
     tracker.add_interaction("pwd", 0)
 

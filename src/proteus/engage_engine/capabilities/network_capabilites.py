@@ -30,5 +30,3 @@ class InjectFakeNetworkConnectionCapability(Capability):
       eac_id=self.eac_id, 
       message="Discovery output spoofed successfully."
     )
-
-# TODO: Implement a capability to simulate network throttling (EAC0016)

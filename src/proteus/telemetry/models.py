@@ -3,6 +3,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 
+from src.proteus.engage_engine.engage_mapping import EngageResult
+
 class NetworkInfo(BaseModel):
     source_ip: str = Field(..., description="The source IP address")
     source_port: int = Field(..., description="The source port number")
@@ -18,6 +20,10 @@ class AuthenticationInfo(BaseModel):
     password: str = Field(..., description="The password used for authentication")
     timestamp: datetime = Field(..., description="The timestamp of the authentication attempt")
 
+class MitreMappingError(BaseModel):
+    error_type: str = Field(..., description="The type of error encountered during MITRE mapping evaluation")
+    error_message: str = Field(..., description="A descriptive message explaining the error encountered during MITRE mapping evaluation")
+
 class MitreMapping(BaseModel):
     technique_id: str = Field(..., description="The MITRE technique ID associated with the command")
     confidence: float = Field(..., description="The confidence score of the MITRE mapping (between 0 and 1)")
@@ -28,6 +34,7 @@ class InteractionInfo(BaseModel):
     timestamp: datetime = Field(..., description="The timestamp of the command execution")
     backspaces: int = Field(..., description="The number of backspaces used in the command")
     mitre_mapping: Optional[MitreMapping] = Field(None, description="The MITRE mapping associated with the command, if any")
+    engage_details: Optional[EngageResult] = Field(None, description="The Engage details associated with the command, if any")
 
 class SessionInfo(BaseModel):
     start_time: datetime = Field(..., description="The start time of the session")
