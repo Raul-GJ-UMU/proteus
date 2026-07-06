@@ -359,5 +359,3 @@ class GenerateTemporalFilesCapability(Capability):
       eac_id=self.eac_id, 
       message=f"{len(files)} temporal files generated successfully."
     )
-
-# TODO: Create a fake encrypted zip file to make the attacker waste time trying to open it. (EAC0015)

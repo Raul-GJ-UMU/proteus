@@ -23,9 +23,10 @@ class DummyCapability:
   last_options = None
   required_fields = {}
 
-  def __init__(self, vfs, virtual_shell, options):
+  def __init__(self, vfs, virtual_shell, eac_id, options):
     self.vfs = vfs
     self.virtual_shell = virtual_shell
+    self.eac_id = eac_id
     self.options = options
     DummyCapability.last_options = options
 
@@ -34,7 +35,7 @@ class DummyCapability:
     return cls.required_fields
 
   def execute(self):
-    return SimpleNamespace(success=True, eac_id="TEST", function_name="dummy", message="ok")
+    return SimpleNamespace(success=True, eac_id=self.eac_id, function_name="dummy", message="ok")
 
 
 class DummyFileCapability(DummyCapability):
@@ -127,7 +128,7 @@ def test_execute_deception_builds_file_options(monkeypatch):
     '{"file_path": "/tmp/decoy.txt", "new_content": "updated decoy content"}',
   )
 
-  engine.execute_deception("modifyFileContentCapability", "command", "description")
+  engine.execute_deception("session_12345", "EAC0001", "modifyFileContentCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.file_path == "/tmp/decoy.txt"
@@ -140,7 +141,7 @@ def test_execute_deception_flattens_nested_file_options(monkeypatch):
     '{"command": {"name": "modify_file_content", "arguments": {"file_path": "/tmp/decoy.txt", "new_content": "updated decoy content"}}}',
   )
 
-  engine.execute_deception("modifyFileContentCapability", "command", "description")
+  engine.execute_deception("session_12345", "EAC0001", "modifyFileContentCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.file_path == "/tmp/decoy.txt"
@@ -153,7 +154,7 @@ def test_execute_deception_builds_network_options(monkeypatch):
     '{"network_data": {"protocol": "TCP", "local_address": "127.0.0.1:8080", "remote_address": "192.168.1.1:443", "state": "ESTABLISHED"}}',
   )
 
-  engine.execute_deception("injectFakeNetworkConnectionCapability", "command", "description")
+  engine.execute_deception("session_12345", "EAC0001", "injectFakeNetworkConnectionCapability", "command", "description")
 
   assert DummyCapability.last_options is not None
   assert DummyCapability.last_options.network_data == {

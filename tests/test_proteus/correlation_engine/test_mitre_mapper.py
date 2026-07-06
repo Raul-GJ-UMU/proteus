@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from src.proteus.correlation_engine.mitre_mapper import MitreMapper
+from src.proteus.correlation_engine.mitre_mapper import MitreMapper, MitreMappingError
 
 @patch("src.proteus.correlation_engine.mitre_mapper.MitreMapping")
 def test_evaluate_command(mock_mitre_mapping_class):
@@ -20,9 +20,9 @@ def test_evaluate_command(mock_mitre_mapping_class):
   }
   mock_mitre_mapping_class.return_value = mock_instance
 
-  mapper = MitreMapper(llm_client=mock_llm_client, llm_model="dummy-model")
+  mapper = MitreMapper(llm_client=mock_llm_client, llm_model="dummy-model", attack_data_keys=["T1033"])
   mapping = mapper.evaluate_command("whoami", [])
   
-  assert mapping is not None
+  assert not isinstance(mapping, MitreMappingError)
   assert mapping.technique_id == "T1033"
   assert mapping.confidence == 0.95

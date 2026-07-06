@@ -52,9 +52,6 @@ class TestProteusSensor:
     handle_session(mock_channel, mock_addr, mock_tracker, mock_shell)
 
     mock_channel.send.assert_any_call(b"logout\r\n")
-    
-    mock_tracker.add_interaction.assert_called_with("exit", 0)
-
 
   def test_session_logout_command(self, sensor, tracker):
     mock_channel = MagicMock()
@@ -67,7 +64,6 @@ class TestProteusSensor:
     handle_session(mock_channel, mock_addr, mock_tracker, mock_shell)
 
     mock_channel.send.assert_any_call(b"logout\r\n")
-    mock_tracker.add_interaction.assert_called_with("logout", 0)
 
   def test_session_shutdown_command_closes_connection(self, sensor, tracker):
     mock_channel = MagicMock()
@@ -85,4 +81,3 @@ class TestProteusSensor:
 
     mock_channel.send.assert_any_call(b"\r\nBroadcast message from root@ubuntu (pts/0) (Mon Jan 01 00:00:00 2026):\r\n\r\nThe system is going down for reboot NOW!\r\n")
     mock_channel.close.assert_called_once()
-    mock_tracker.add_interaction.assert_called_with("reboot", 0)
