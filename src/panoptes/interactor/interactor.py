@@ -29,7 +29,6 @@ class Interactor:
       time.sleep(1)  # Wait for the shell to be ready
       if self.shell.recv_ready():
         welcome_message = self.shell.recv(4096).decode('utf-8')
-        logger.debug(f"Received welcome message: {welcome_message.strip()}")
       
       logger.success(f"Successfully connected to {self.host}")
       return True
@@ -50,7 +49,6 @@ class Interactor:
       output += self.shell.recv(4096).decode('utf-8')
     
     clean_output = output.strip()
-    # logger.debug(f"Command output: {clean_output}")
     return clean_output
   
   def disconnect(self):

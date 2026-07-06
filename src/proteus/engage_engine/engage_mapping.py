@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
 
+class EngageResult(BaseModel):
+  result_status: str = Field(..., description="The result state of the Engage execution (e.g., success, failure, error)")
+  capability_name: str = Field(..., description="The name of the Engage capability that was executed")
+  eac_id: str = Field(..., description="The Engage Activity ID (e.g., EAC-001) associated with the executed command")
+  error_message: str = Field(..., description="Error message if the command execution failed")
+
 class EngageGoal(BaseModel):
   goal_id: str = Field(..., description="The Engage Goal ID (e.g., EAG-001)")
   name: str = Field(..., description="The Engage Goal name")

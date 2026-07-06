@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import random
 import socket
 import time
 import yaml
@@ -54,11 +55,12 @@ def run_orchestration(config_path="orchestrator/config.yaml"):
           attacker_name = attacker.get("name") 
           attacker_level = attacker.get("level")
           attacker_techniques = attacker.get("techniques", [])
+          iteration_int = 4
           # Layer 5: Iterations
           for iteration in range(repetitions):
             current_run += 1
             date_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            session_id = f"sim-{date_time}_DC-{proteus_correlation_model.split('/')[0]}_DE-{proteus_engage_model.split('/')[0]}_AM-{panoptes_model.split('/')[0]}_AL{attacker_level}_i{iteration}"
+            session_id = f"sim-{date_time}_DC-{proteus_correlation_model.split('/')[0]}_DE-{proteus_engage_model.split('/')[0]}_AM-{panoptes_model.split('/')[0]}_AL{attacker_level}_i{iteration_int}"
             
             logger.info(f"[{current_run}/{total_runs}] Initiating session: {session_id}")
             
@@ -70,7 +72,7 @@ def run_orchestration(config_path="orchestrator/config.yaml"):
             proteus_env["PROTEUS_ENGAGE_ENGINE_TEMPERATURE"] = str(config["proteus"]["engage_engine_temperature"])
             proteus_env["PROTEUS_ENGAGE_ENGINE_THRESHOLD"] = str(config["proteus"]["engage_engine_threshold"])
             proteus_env["SESSION_ID"] = session_id
-            proteus_env["ENABLE_METRICS"] = "True"
+            proteus_env["ENABLE_METRICS"] = "true"
             proteus_env["METRICS_FILE"] = "defend_metrics.jsonl"
 
             # 2. Start the Honeypot (Proteus)
@@ -98,19 +100,22 @@ def run_orchestration(config_path="orchestrator/config.yaml"):
             panoptes_env["PANOPTES_THRESHOLD"] = str(config["panoptes"]["threshold"])
             panoptes_env["PANOPTES_LEVEL"] = attacker_level
             panoptes_techniques = ",".join(attacker_techniques)
-            logger.debug(f"-> Attacker Techniques: {panoptes_techniques}")
             panoptes_env["PANOPTES_TECHNIQUES"] = panoptes_techniques
             panoptes_env["SESSION_ID"] = session_id
-            panoptes_env["ENABLE_METRICS"] = "True"
+            panoptes_env["ENABLE_METRICS"] = "true"
             panoptes_env["METRICS_FILE"] = "attack_metrics.jsonl"
+            panoptes_env["PANOPTES_SELECT_RANDOM_TEST"] = "true"
+            panoptes_env["PANOPTES_USER"] = "user"
+            panoptes_env["PANOPTES_PASS"] = "user"
+            panoptes_env["PANOPTES_SEED"] = str(iteration_int)
 
             # 4. Start the attack simulation (Panoptes)
             logger.info(f"-> Starting attack ({attacker_name})...")
             subprocess.run(
               [sys.executable, "-m", "src.panoptes.panoptes_main"],
               env=panoptes_env,
-              stdout=subprocess.DEVNULL,
-              stderr=subprocess.DEVNULL
+              #stdout=subprocess.DEVNULL,
+              #stderr=subprocess.DEVNULL
             )
 
             # 5. Waiting for proteus to finish processing the attack
@@ -131,6 +136,8 @@ def run_orchestration(config_path="orchestrator/config.yaml"):
               proteus_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
               proteus_process.kill()
+
+            iteration_int += 1
 
   logger.success("¡Orchestration Completed!")
 

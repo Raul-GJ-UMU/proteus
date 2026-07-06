@@ -67,9 +67,9 @@ class ShellTerminationError(RuntimeError):
     self.exit_reason = exit_reason
 
 class VirtualShell:
-  def __init__(self, vfs: VirtualFileSystem):
+  def __init__(self, vfs: VirtualFileSystem, user: str = "root"):
     self.vfs = vfs
-    self.current_user = "root"
+    self.current_user = user
     self.current_tty = "tty1"
     self.process_list: list[ProcessData] = []
     self.network_connections: list[NetworkConnection] = [] # Future use
@@ -130,7 +130,8 @@ class VirtualShell:
       "wc": self.do_wc,
       "ping": self.do_ping,
       "clear": self.do_clear,
-      "env": self.do_env
+      "env": self.do_env,
+      "users": self.do_users, 
     }
 
     self.manipulated_output_commands: dict[str, str] = {}
@@ -148,9 +149,28 @@ class VirtualShell:
 
     self.cowrie_registry = {}
     self.load_cowrie_commands()
+    self.command_recorder = None
+
+  def set_command_recorder(self, recorder):
+    self.command_recorder = recorder
+
+  def _should_record_command(self, command: str) -> bool:
+    stripped_command = command.strip()
+    return bool(stripped_command) and not re.match(r'^if(\s|\[)', stripped_command)
+
+  def _record_command(self, command: str):
+    if self.command_recorder and self._should_record_command(command):
+      self.command_recorder(command.strip())
+  
+  def set_current_user(self, user: str):
+    self.current_user = user
+    self.environ["USER"] = user
+    self.environ["LOGNAME"] = user
+    self.environ["HOME"] = f"/{user}"
+    self.environ["PWD"] = f"/{user}"
+    self.vfs.cwd_path = f"/{user}"
   
   def load_cowrie_commands(self):
-    # logger.info("Scanning for Cowrie command modules...")
     try:
       import src.proteus.virtual_env.commands as cowrie_cmds_pkg
       
@@ -165,10 +185,8 @@ class VirtualShell:
               self.cowrie_registry[base_cmd] = cmd_class
                     
         except Exception as e:
-          logger.error(f"Error loading module '{module_name}': {e}")
+          pass
               
-      # logger.success(f"{len(self.cowrie_registry)} cowrie commands loaded successfully.")
-      print(f"Loaded Cowrie commands: {', '.join(self.cowrie_registry.keys())}")
     except Exception as e:
       logger.error(f"Fatal error initializing Cowrie registry: {e}")
   
@@ -192,15 +210,15 @@ class VirtualShell:
       "Last login: " + (datetime.now() - timedelta(days=1)).strftime("%a %b %d %H:%M:%S %Y") + " from 192.168.1.15\r\n"
     )
   
-  def get_prompt(self, current_user="root"):
+  def get_prompt(self):
     display_path = self.vfs.cwd_path
-    if (display_path == f"/{current_user}"):
+    if (display_path == f"/{self.current_user}"):
       display_path = "~"
-    elif display_path.startswith(f"/{current_user}/"):
-      display_path = "~" + display_path[len(f"/{current_user}"):]
+    elif display_path.startswith(f"/{self.current_user}/"):
+      display_path = "~" + display_path[len(f"/{self.current_user}"):]
     
-    symbol = "#" if current_user == "root" else "$"
-    return f"{current_user}@ubuntu:{display_path}{symbol} "
+    symbol = "#" if self.current_user == "root" else "$"
+    return f"{self.current_user}@ubuntu:{display_path}{symbol} "
   
   def inject_fake_process(self, process_data: ProcessData):
     self.process_list.append(process_data)
@@ -280,21 +298,58 @@ class VirtualShell:
         return left != right
 
     return False
+  
+  def _handle_sudo(self, command: str) -> str:
+    cmd_clean = command.strip()
+    
+    remainder = re.sub(r'^sudo\s*', '', cmd_clean)
+    
+    if not remainder:
+      return (
+        "usage: sudo -h | -K | -k | -V\n"
+        "usage: sudo -v [-AknS] [-g group] [-h host] [-p prompt] [-u user]\n"
+        "usage: sudo -l [-AknS] [-g group] [-h host] [-p prompt] [-U user] [-u user] [command]\n"
+        "usage: sudo [-AbEHknPS] [-r role] [-t type] [-C num] [-D directory] [-g group] [-h host] [-p prompt] [-R directory] [-T timeout] [-u user] [VAR=value] [-i|-s] [<command>]\n"
+        "usage: sudo -e [-AknS] [-r role] [-t type] [-C num] [-D directory] [-g group] [-h host] [-p prompt] [-R directory] [-T timeout] [-u user] file ...\n"
+      )
+    
+    while True:
+      match_param = re.match(r'^-([ugpU])\s+(?:"[^"]*"|\'[^\']*\'|\S+)\s*', remainder)
+      match_simple = re.match(r'^-([A-Za-z]+)\s*', remainder)
+      
+      if match_param:
+        remainder = remainder[match_param.end():]
+      elif match_simple:
+        remainder = remainder[match_simple.end():]
+      else:
+        break
+            
+    if not remainder:
+      return ""
+        
+    return self.execute_command(remainder, record_current=False)
 
-  def execute_command(self, command: str) -> str:
+  def execute_command(self, command: str, record_current: bool = True) -> str:
     command = command.strip()
     if not command:
       return ""
-    
-    # Handle 'if' statements
-    if command.startswith("if ") or command.startswith("if["):
-      return self._handle_if_statement(command)
+
+    if record_current:
+      self._record_command(command)
     
     # Handle enviroment variables
     if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*=', command):
       var_name, var_value = command.split('=', 1)
       self.environ[var_name] = var_value.replace('"', '').replace("'", "")
       return ""
+    
+    # Handle 'if' statements
+    if command.startswith("if ") or command.startswith("if["):
+      return self._handle_if_statement(command)
+    
+    # Handle 'sudo' commands
+    if command.startswith("sudo ") or command == "sudo":
+      return self._handle_sudo(command)
     
     for var_name, var_value in self.environ.items():
       command = command.replace(f"${var_name}", var_value)
@@ -545,9 +600,9 @@ class VirtualShell:
   
   def do_free(self, args: list):
     return (
-      "              total        used        free      shared  buff/cache   available\r\n"
-      "Mem:        2010780      300000     1451796       50000       23944     1638988\r\n"
-      "Swap:       2097148           0     2097148\r\n"
+      "              total        used        free      shared  buff/cache   available\n"
+      "Mem:        2010780      300000     1451796       50000       23944     1638988\n"
+      "Swap:       2097148           0     2097148\n"
     )
   
   def do_w(self, args: list):
@@ -831,3 +886,6 @@ class VirtualShell:
   def do_env(self, args: list):
     output_lines = [f"{key}={value}" for key, value in self.environ.items()]
     return "\n".join(output_lines) + "\n"
+
+  def do_users(self, args: list):
+    return f"{self.current_user}\n"

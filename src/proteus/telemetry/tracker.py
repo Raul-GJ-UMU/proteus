@@ -80,7 +80,6 @@ class SessionTracker:
       description = obj.get("description", "No description available.")
       attack_map[str(attack_id)] = str(description)
 
-    logger.success(f"Loaded {len(attack_map)} ATT&CK techniques from local JSON data.")
     return attack_map
 
   def add_ssh_client(self, client_version: str):
@@ -105,7 +104,8 @@ class SessionTracker:
       command=command,
       timestamp=datetime.now(timezone.utc),
       backspaces=backspaces,
-      mitre_mapping=None
+      mitre_mapping=None,
+      engage_details=None
     )
 
     self.interactions.append(interaction)
@@ -143,14 +143,13 @@ class SessionTracker:
           target_interaction.mitre_mapping = mitre_result
           if mitre_result.confidence >= self.engage_engine_confidence_threshold:
             engage_details = self.engage_parser.get_engage_activities_for_technique(mitre_result.technique_id)
-            # engage_ids = [detail.activity.activity_id for detail in engage_details]
-            # logger.info(f"Engage activities for command '{command}': {engage_ids}")
             if len(engage_details) == 0:
               logger.warning(f"No Engage activities found for MITRE technique '{mitre_result.technique_id}' for command '{command}'.")
               return
             description = self.attack_data.get(mitre_result.technique_id, "No description available.")
             try:
-              self.engage_engine.evaluate_and_react(self.session_id, command, description, engage_details)
+              engage_result = self.engage_engine.evaluate_and_react(self.session_id, command, description, engage_details)
+              target_interaction.engage_details = engage_result
             except ValidationError as e:
               logger.error(f"Error validating fields for command '{command}': {e}")
       except Exception as e:

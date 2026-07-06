@@ -41,7 +41,6 @@ class EngageParser:
     if not self.cache_path.exists():
       return {}
 
-    # logger.info(f"Loading Engage cache from {self.cache_path}...")
     with self.cache_path.open("r", encoding="utf-8") as cache_file:
       cached_payload = json.load(cache_file)
 
@@ -53,7 +52,6 @@ class EngageParser:
         engage_details=engage_details,
       )
 
-    logger.success(f"Loaded {len(mapper)} ATT&CK techniques from Engage cache.")
     return mapper
 
   def _save_mapper_cache(self, mapper: dict[str, TechniqueMapping]) -> None:
@@ -120,8 +118,6 @@ class EngageParser:
     cached_mapper = self._load_mapper_cache()
     if cached_mapper:
       return cached_mapper
-
-    # logger.info(f"Loading Engage data from {excel_path}...")
 
     try:
       self.df_enterprise = pd.read_excel(excel_path, sheet_name="Enterprise ATT&CK Mappings")

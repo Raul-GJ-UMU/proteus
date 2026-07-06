@@ -27,10 +27,8 @@ ENABLE_METRICS = os.getenv("ENABLE_METRICS", "false").lower() == "true"
 def get_or_generate_rsa_key(path: str) -> paramiko.RSAKey:
   os.makedirs(os.path.dirname(path), exist_ok=True)
   if os.path.exists(path):
-    # logger.info(f"Loading RSA key from {path}")
     return paramiko.RSAKey(filename=path)
   else:
-    # logger.info(f"Generating new RSA key on {path}")
     key = paramiko.RSAKey.generate(2048)
     key.write_private_key_file(path)
     return key
@@ -73,6 +71,7 @@ def save_session_data(tracker: SessionTracker, exit_reason: str = "User requeste
 def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTracker, shell: VirtualShell):
   # logger.success("SSH session established")
 
+  shell.set_current_user(tracker.auth_info.username if tracker.auth_info else "root")
   motd = shell.get_motd()
   channel.send(motd.encode("utf-8"))
   prompt = shell.get_prompt()
@@ -80,6 +79,15 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
 
   command_history: list[str] = []
   command_pointer = 0
+
+  def record_executed_command(executed_command: str):
+    nonlocal command_pointer
+    command_history.append(executed_command)
+    command_pointer = len(command_history)
+    tracker.add_interaction(executed_command, 0)
+    logger.info(f"Command captured: {executed_command}")
+
+  shell.set_command_recorder(record_executed_command)
   
   command_buffer = ""
   backspace_count = 0
@@ -103,12 +111,8 @@ def handle_session(channel: paramiko.Channel, addr: tuple, tracker: SessionTrack
 
         if not full_command:
           continue
-        
-        command_history.append(full_command)
-        command_pointer = len(command_history)
-        tracker.add_interaction(full_command, backspace_count)
+
         backspace_count = 0
-        logger.info(f"Command captured: {full_command}")
 
         if full_command.lower() in ("exit", "logout"):
           channel.send(b"logout\r\n")
@@ -209,6 +213,7 @@ def start_sensor(host="0.0.0.0", port=2222):
     logger.success(f"Sensor SSH listening on {host}:{port}")
 
     global_vfs = VirtualFileSystem()
+    shell = VirtualShell(global_vfs)
 
     llm_client = OpenAI(
       base_url=os.getenv("OPENAI_BASE_URL"),
@@ -221,6 +226,14 @@ def start_sensor(host="0.0.0.0", port=2222):
       logger.error("OPENAI_BASE_URL not configured in the .env file. Cannot generate CTI sentence.")
       return
     
+    engage_parser = EngageParser()
+
+    engage_engine = EngageEngine(
+      vfs=global_vfs,
+      virtual_shell=shell,
+      llm_client=llm_client,
+    )
+    
     while True:
       try:
         client, addr = sock.accept()
@@ -230,21 +243,10 @@ def start_sensor(host="0.0.0.0", port=2222):
       logger.info(f"New conexion from {addr[0]}:{addr[1]}")
 
       session_id = os.getenv("SESSION_ID", f"session_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[-8:]}_{addr[0]}")
-      
-      shell = VirtualShell(global_vfs)
-
-      engage_parser = EngageParser()
-
-      engage_engine = EngageEngine(
-        vfs=global_vfs,
-        virtual_shell=shell,
-        llm_client=llm_client,
-      )
 
       transport = paramiko.Transport(client)
       transport.add_server_key(host_key)
       tracker = SessionTracker(session_id, addr[0], addr[1], "Pending...", llm_client, engage_parser, engage_engine)
-
       server = Sensor(tracker)
 
       try:

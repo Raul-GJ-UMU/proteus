@@ -17,9 +17,7 @@ proteus:
 
 panoptes:
   llm_models:
-    - "tinyllama"
     - "phi3"
-    - "qwen2:7b"
   temperature: 0.2
   threshold: 0.4
   attackers:
@@ -30,14 +28,14 @@ panoptes:
     - name: "Intermediate_example"
       level: "Intermediate"
       techniques:
-        - "T1033"
         - "T1082" # System Information Discovery
-        - "T1016" # System Network Configuration Discovery
+        - "T1083" # File and Directory Discovery
+        - "T1003.008" # OS Credential Dumping: /etc/passwd and /etc/shadow
     - name: "Advanced_example"
       level: "Advanced"
       techniques:
-        - "T1033"
-        - "T1082"
-        - "T1016"
         - "T1049" # System Network Connections Discovery
         - "T1057" # Process Discovery
+        - "T1222.002" # File and Directory Permissions Modification: Linux and Mac Permissions
+        - "T1548.003" # Abuse Elevation Control Mechanism: Sudo and Sudo Caching
+        - "T1105" # Ingress Tool Transfer

@@ -1,14 +1,17 @@
+from dotenv import load_dotenv
 import os
 
 from src.panoptes.interactor.interactor import Interactor
 from src.panoptes.attack_engine.attack_engine import AttackEngine
 
+load_dotenv()
+
 if __name__ == "__main__":
   interactor = Interactor(
     host="127.0.0.1",
     port=2222,
-    username="root",
-    password="rootPassword"
+    username=os.getenv("PANOPTES_USER", "root"),
+    password=os.getenv("PANOPTES_PASS", "root")
   )
 
   attack_engine = AttackEngine(

@@ -14,7 +14,7 @@ from src.proteus.engage_engine.capabilities.utils import CapabilityResult
 from src.proteus.virtual_env.vfs import VirtualFileSystem
 from src.proteus.virtual_env.virtual_shell import VirtualShell, ProcessData
 from src.proteus.engage_engine.engage_parser import EngageParser
-from src.proteus.engage_engine.engage_mapping import EngageDetails
+from src.proteus.engage_engine.engage_mapping import EngageDetails, EngageResult
 
 from loguru import logger
 
@@ -65,7 +65,6 @@ class EngageEngine:
               capabilities[name] = obj
       except ImportError as e:
         logger.error(f"Failed to import module '{module_name}': {e}")
-    logger.info(f"Discovered capabilities: {capabilities}")
     return capabilities
       
   
@@ -82,7 +81,6 @@ class EngageEngine:
         logger.warning(f"Capabilities mapping file not found at {capabilities_mapping_url}")
         return {}
 
-    # logger.info(f"Loading capabilities mapping from {url}...")
     with url.open("r", encoding="utf-8") as cache_file:
       raw = json.load(cache_file)
 
@@ -98,7 +96,7 @@ class EngageEngine:
 
     return mapping
 
-  def evaluate_and_react(self, session_id: str, command: str, description: str, engage_details: list[EngageDetails]) -> None:
+  def evaluate_and_react(self, session_id: str, command: str, description: str, engage_details: list[EngageDetails]) -> EngageResult:
     valid_capabilities: list[tuple[str, str]] = []
 
     for detail in engage_details:
@@ -106,20 +104,16 @@ class EngageEngine:
       capabilities = self.activity_capabilities_mapping.get(activity, [])
       valid_capabilities.extend([(activity, cap) for cap in capabilities])
 
-    # logger.info(f"Valid deception capabilities for this technique: {valid_capabilities}")
     selected_capability = random.choice(valid_capabilities) # If a capability appears more than once, it's propability to be chosen increases
-    self.execute_deception(session_id, selected_capability[0], selected_capability[1], command, description)
+    return self.execute_deception(session_id, selected_capability[0], selected_capability[1], command, description)
 
-  def execute_deception(self, session_id: str, eac_id: str, capability_name: str, command: str, description: str) -> None:
-    logger.info(f"Capabilities registry: {self.capabilities_registry}")
+  def execute_deception(self, session_id: str, eac_id: str, capability_name: str, command: str, description: str) -> EngageResult:
     capability_class = self.capabilities_registry.get(capability_name)
-    logger.info(f"Capability class for '{capability_name}': {capability_class}")
     if capability_class is None:
       logger.warning(f"Unsupported deception capability '{capability_name}'.")
-      return
-    
-    llm_syntax_error = False
-    llm_execution_error = False
+      return EngageResult(result_status="unsupported_capability", eac_id=eac_id, capability_name=capability_name, error_message="Unsupported deception capability")
+
+    llm_error_type = None
     result: CapabilityResult | None = None
     
     try:
@@ -135,22 +129,31 @@ class EngageEngine:
       result = capability.execute()
       
       if result is None:
-        return
-      
+        return EngageResult(result_status="unknown_error", eac_id=eac_id, capability_name=capability_name, error_message="Failed to execute capability")
+
       if result.success:
         logger.success(
           f"Executed capability '{capability_name}' ({result.eac_id}): {result.message}"
         )
       else:
-        llm_execution_error = True
+        llm_error_type = "llm_execution_error"
         logger.warning(
           f"Capability '{capability_name}' failed ({result.eac_id}): {result.message}"
         )
     except LlmSyntaxError as e:
-      llm_syntax_error = True
+      llm_error_type = "llm_syntax_error"
     except Exception as e:
+      llm_error_type = "llm_execution_error"
       logger.error(f"Unexpected error occurred: {e}")
     finally:
+      result_status = llm_error_type if llm_error_type else "success" if result and result.success else "Unknown Error"
+      if result:
+        if result.success:
+          error_message = ""
+        else:
+          error_message = result.message
+      else:
+        error_message = "LLM returned invalid options for capability" if llm_error_type == "llm_syntax_error" else "Unknown Error"
       if self.enable_metrics:
         metrics_data = {
           "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -160,12 +163,19 @@ class EngageEngine:
           "command": command,
           "capability_name": capability_name,
           "description": description,
-          "result": "llm_syntax_error" if llm_syntax_error else ("llm_execution_error" if llm_execution_error else result.success if result else "unknown"),
+          "result":  result_status,
           "eac_id": result.eac_id if result else "",
           "message": result.message if result else ""
         }
         with open(self.metrics_file, "a", encoding="utf-8") as f:
           f.write(json.dumps(metrics_data) + "\n")
+        
+      return EngageResult(
+        result_status=result_status,
+        eac_id=result.eac_id if result else eac_id,
+        capability_name=capability_name,
+        error_message=error_message
+      )
 
   def _build_capability_options(
       self, 
@@ -210,8 +220,6 @@ class EngageEngine:
       "Return ONLY a raw JSON object."
     )
 
-    logger.debug(f"Requesting options from LLM for capability '{capability_name}': {user_prompt}")
-
     try:
       response = self.llm_client.chat.completions.create(
         model=self.llm_model,
@@ -238,7 +246,6 @@ class EngageEngine:
 
     payload = self._coerce_capability_payload(capability_name, payload, option_fields)
     result = SimpleNamespace(**payload)
-    logger.info(f"Generated options for capability '{capability_name}': {payload}")
     return result
 
   def _parse_options_payload(self, raw_output: str) -> object:
